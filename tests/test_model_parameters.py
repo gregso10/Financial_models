@@ -1,5 +1,5 @@
 import pytest
-from scripts._1_model_params import ModelParameters # Assuming your file is named _1_model_params.py
+from scripts._1_model_params import *
 
 # --- Test Initialization with Defaults ---
 
@@ -38,8 +38,12 @@ def test_model_parameters_specific_initialization():
                 "monthly_rent_sqm": 28.0,
                 "vacancy_rate": 0.06,
                 "rent_growth_rate": 0.018
+            },
+            "unfurnished_3yr": { # <<< ADD THIS explicitly using default values
+                "monthly_rent_sqm": 10.0, # Default value
+                "vacancy_rate": 0.04, # Default value
+                "rent_growth_rate": 0.015 # Default value
             }
-            # 'unfurnished_3yr' will use its full default structure
         },
          "management_fees_percentage_rent": { # Completely override this dict
             "airbnb": 0.22,
