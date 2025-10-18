@@ -1,7 +1,7 @@
 # In file: scripts/_1_model_params.py
 
 from dataclasses import dataclass, field
-from typing import Dict, Optional # Import Dict and Optional for type hinting
+from typing import Dict, Optional, List # Import Dict and Optional for type hinting
 
 @dataclass
 class ModelParameters:
@@ -31,8 +31,10 @@ class ModelParameters:
     rental_assumptions: Dict[str, Dict] = field(default_factory=lambda: {
         "airbnb": {
             "daily_rate": 0.0,
-            "occupancy_rate": 0.70, # e.g., 70% occupancy
-            "rent_growth_rate": 0.02
+            "occupancy_rate": 0.70,
+            "rent_growth_rate": 0.02,
+            # Added: Monthly seasonality factors (Jan=index 0 to Dec=index 11)
+            "monthly_seasonality": [0.8, 0.8, 0.9, 1.0, 1.1, 1.2, 1.3, 1.2, 1.0, 0.9, 0.8, 0.8]
         },
         "furnished_1yr": {
             "monthly_rent_sqm": 0.0,
