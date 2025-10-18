@@ -29,11 +29,6 @@ def default_params():
         lmnp_amortization_property_years=30,
         lmnp_amortization_furnishing_years=7
     )
-    # Calculate necessary derived values (normally orchestrator's job)
-    # Ensure these methods exist in your ModelParameters class
-    params._calculate_acquisition_costs()
-    params._calculate_financing()
-    params._calculate_amortization_bases()
     return params
 
 # --- Test Initialization ---
@@ -63,20 +58,28 @@ def test_generate_pnl_dataframe_structure(default_params, lease_type):
     assert list(df_pnl.index) == list(range(1, expected_months + 1)) # Index should be 1 to num_months
 
     # Check common columns exist
-    common_cols = ["Year", "Gross Potential Rent", "Vacancy Loss", "Gross Operating Income",
+    common_cols = ["Year", "Gross Potential Rent", #"Vacancy Loss", <-- Temporarily remove or handle conditionally
+                   "Gross Operating Income",
                    "Property Tax", "Condo Fees", "PNO Insurance", "Maintenance",
                    "Management Fees", "Total Operating Expenses", "Net Operating Income",
                    "Loan Interest", "Loan Insurance", "Depreciation/Amortization",
                    "Taxable Income", "Income Tax", "Social Contributions", "Total Taxes",
                    "Net Income"]
-    for col in common_cols:
-         assert col in df_pnl.columns
 
-    # Check lease-specific columns
+    # Add lease-specific expectations to common_cols BEFORE the loop
+    if lease_type != "airbnb":
+        common_cols.insert(2, "Vacancy Loss") # Add Vacancy Loss if NOT Airbnb
+
+    for col in common_cols:
+         assert col in df_pnl.columns # Now this check adapts
+
+    # Check lease-specific columns (This part remains the same)
     if lease_type == "airbnb":
         assert "Airbnb Specific Costs" in df_pnl.columns
+        assert "Vacancy Loss" not in df_pnl.columns # Explicitly check it's NOT there
     else:
-        assert "Airbnb Specific Costs" not in df_pnl.columns
+        assert "Airbnb Specific Costs" not in df_pnl.columns # Explicitly check it's NOT there
+        assert "Vacancy Loss" in df_pnl.columns # It should be there
 
 # --- Test Specific Calculations (Simplified Examples) ---
 # Add more detailed tests for specific months/years and edge cases
@@ -125,8 +128,6 @@ def test_airbnb_revenue_calculation(default_params):
     expected_goi_m1 = expected_potential_rent_m1 * occupancy * seasonality[0]
     assert df_pnl.loc[1, "Gross Potential Rent"] == pytest.approx(expected_potential_rent_m1)
     assert df_pnl.loc[1, "Gross Operating Income"] == pytest.approx(expected_goi_m1)
-    assert df_pnl.loc[1, "Vacancy Loss"] == 0 # Vacancy handled by occupancy
-
     # Month 13 (Jan - Year 2)
     expected_potential_rent_m13 = daily_rate * days_in_month[0] * (1 + growth)**1
     expected_goi_m13 = expected_potential_rent_m13 * occupancy * seasonality[0]
