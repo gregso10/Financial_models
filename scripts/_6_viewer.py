@@ -116,11 +116,16 @@ class ModelViewer:
             pnl_y1 = pnl[pnl["Year"] == 1]
             # Optional: Sum monthly to show annual total for Year 1
             pnl_y1_sum = pnl_y1.drop(columns='Year').sum().to_frame('Year 1 Total')
-            # st.dataframe(pnl_y1_sum.style.format("{:,.2f}"))
+            # st                                                                        .dataframe(pnl_y1_sum.style.format("{:,.2f}"))
             st.dataframe(pnl_y1.style.format("{:,.2f}")) # To show monthly
         else:
             st.warning("P&L Statement not generated.")
                 # Function to apply bold style to the index (row labels)
+        st.subheader("Profit & Loss")
+        pnl_all = pnl.groupby(["Year"]).sum()
+        pnl_pivoted = pnl_all.set_index('Year')
+        pnl_pivoted = pnl_pivoted.T
+        st.dataframe(pnl_pivoted.style.format("{:,.2f}"))
 
         def bold_totals(series):
             # Example: Bold rows with 'Total' or 'Net' in their name
