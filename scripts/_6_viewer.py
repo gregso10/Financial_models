@@ -5,6 +5,7 @@ import pandas as pd
 from typing import Dict, Any # For type hinting
 from ._1_model_params import ModelParameters
 from ._0_financial_model import FinancialModel # Assuming orchestrator is here
+from ._7_data_visualizer import DataVisualizer #
 
 class ModelViewer:
     """
@@ -12,7 +13,7 @@ class ModelViewer:
     """
     def __init__(self):
         """Initializes the viewer."""
-        # We don't store the model permanently, it gets created on run
+        self.visualizer = DataVisualizer()
         pass
 
     def display_sidebar_inputs(self, defaults: ModelParameters) -> Dict[str, Any]:
@@ -109,36 +110,208 @@ class ModelViewer:
 
         # Inside ModelViewer.display_outputs, after getting a DataFrame (e.g., pnl_y1_sum)
 
-        st.subheader("Profit & Loss (Year 1 Summary - Formatted)")
+        # st.subheader("Profit & Loss (Year 1 Summary - Formatted)")
+
+        # if pnl is not None:
+        #     st.subheader("Profit & Loss (Year 1)")
+        #     pnl_y1 = pnl[pnl["Year"] == 1]
+        #     # Optional: Sum monthly to show annual total for Year 1
+        #     pnl_y1_sum = pnl_y1.drop(columns='Year').sum().to_frame('Year 1 Total')
+        #     # st                                                                        .dataframe(pnl_y1_sum.style.format("{:,.2f}"))
+        #     st.dataframe(pnl_y1.style.format("{:,.2f}")) # To show monthly
+        # else:
+        #     st.warning("P&L Statement not generated.")
+        #         # Function to apply bold style to the index (row labels)
+
+        st.subheader("Profit & Loss (Yearly Summary)")
 
         if pnl is not None:
-            st.subheader("Profit & Loss (Year 1)")
-            pnl_y1 = pnl[pnl["Year"] == 1]
-            # Optional: Sum monthly to show annual total for Year 1
-            pnl_y1_sum = pnl_y1.drop(columns='Year').sum().to_frame('Year 1 Total')
-            # st                                                                        .dataframe(pnl_y1_sum.style.format("{:,.2f}"))
-            st.dataframe(pnl_y1.style.format("{:,.2f}")) # To show monthly
+            pnl_all = pnl.groupby(["Year"]).sum()
+            pnl_pivoted = pnl_all.T
+            pnl_pivoted.columns = [f"Year {col}" for col in pnl_pivoted.columns]
+            
+            # --- Start: P&L Formatting Modifications ---
+
+            # 1. (Req 1) Define expense rows to flip their sign for (xx) display
+            # These items are stored as positive values but represent outflows.
+            expense_rows = [
+                "Vacancy Loss", "Property Tax", "Condo Fees", "PNO Insurance",
+                "Maintenance", "Management Fees", "Airbnb Specific Costs",
+                "Total Operating Expenses", "Loan Interest", "Loan Insurance",
+                "Depreciation/Amortization", "Income Tax", 
+                "Social Contributions", "Total Taxes"
+            ]
+            
+            # Find which of these rows actually exist in the dataframe and flip their sign
+            rows_to_flip = pnl_pivoted.index.intersection(expense_rows)
+            pnl_pivoted.loc[rows_to_flip] *= -1
+
+            # 2. (Req 4) Divide by 1000 to get k€
+            pnl_pivoted_k = pnl_pivoted / 1000.0
+
+            # 3. (Req 7) Set the index name (top-left corner)
+            pnl_pivoted_k.index.name = "(in €k)"
+
+            # 4. (Req 5) Create a label map for indentation and cleaner names
+            label_map = {
+                "Gross Potential Rent": "Gross Potential Rent",
+                "Vacancy Loss": "  Vacancy Loss",
+                "Gross Operating Income": "Gross Operating Income",
+                "Property Tax": "  Property Tax",
+                "Condo Fees": "  Condo Fees",
+                "PNO Insurance": "  PNO Insurance",
+                "Maintenance": "  Maintenance",
+                "Management Fees": "  Management Fees",
+                "Airbnb Specific Costs": "  Airbnb Specific Costs",
+                "Total Operating Expenses": "Total Operating Expenses",
+                "Net Operating Income": "Net Operating Income",
+                "Loan Interest": "  Loan Interest",
+                "Loan Insurance": "  Loan Insurance",
+                "Depreciation/Amortization": "  Depreciation/Amortization",
+                "Taxable Income": "Taxable Income",
+                "Income Tax": "  Income Tax",
+                "Social Contributions": "  Social Contributions",
+                "Total Taxes": "Total Taxes",
+                "Net Income": "Net Income"
+            }
+            # Apply the map, keeping original name if not in map
+            pnl_pivoted_k.index = pnl_pivoted_k.index.map(lambda x: label_map.get(x, x))
+
+            # 5. (Req 1, 2, 3) Define the custom formatter
+            def format_k_euros(val):
+                """Formats numbers in k€: (xx) for negative, xx for positive, 0 for zero."""
+                if pd.isna(val):
+                    return "-" # Handle missing data
+                try:
+                    # Round to nearest integer (k€)
+                    val_int = int(round(val, 0)) 
+                    if val_int < 0:
+                        return f"({abs(val_int):,})" # (1,234)
+                    elif val_int == 0:
+                        return "0"
+                    else:
+                        return f"{val_int:,}" # 1,234
+                except (ValueError, TypeError):
+                    return val # Return as-is if not a number
+
+            # 6. (Req 6) Define the styling function for separators and bolding
+            def style_financial_rows(row):
+                """
+                Applies styles to a row based on its *new* index name (row.name).
+                - Bolds any 'Total' or 'Net' row.
+                - Adds line separators above key summary rows.
+                - Highlights 'Net Income'.
+                """
+                row_name_clean = row.name.strip() # Remove indentation for matching
+                styles = [''] * len(row) # Default
+                
+                # Bolding for totals/net
+                if 'Total' in row_name_clean or 'Net' in row_name_clean:
+                    styles = ['font-weight: bold'] * len(row)
+                
+                # (Req 6) Line separators
+                separator_rows = [
+                    "Gross Operating Income", 
+                    "Total Operating Expenses", 
+                    "Net Operating Income",
+                    "Taxable Income",
+                    "Total Taxes",
+                    "Net Income"
+                ]
+                if row_name_clean in separator_rows:
+                    # Apply a border-top to all cells in this row
+                    styles = [s + '; border-top: 1px solid #4b5563' for s in styles]
+                
+                # Specific override for 'Net Income'
+                if row_name_clean == 'Net Income':
+                    styles = [
+                        'background-color: lightgrey; font-weight: bold; color: black; border-top: 2px solid white;'
+                    ] * len(row)
+                    
+                return styles
+            
+            def style_pnl_index_label(label):
+                """
+                Applies styles to the *index label* based on its name.
+                Mirrors the logic in 'style_financial_rows' for consistency.
+                """
+                label_clean = label.strip() # Remove indentation
+                # Start with base styles from .set_table_styles
+                style = 'text-align: left; padding-left: 5px; ' 
+
+                # Bolding for totals/net
+                if 'Total' in label_clean or 'Net' in label_clean:
+                    style += 'font-weight: bold; '
+                
+                # Line separators
+                separator_rows = [
+                    "Gross Operating Income", 
+                    "Total Operating Expenses", 
+                    "Net Operating Income",
+                    "Taxable Income",
+                    "Total Taxes",
+                    "Net Income"
+                ]
+                if label_clean in separator_rows:
+                    style += 'border-top: 1px solid #4b5563; '
+                
+                # Specific override for 'Net Income'
+                if label_clean == 'Net Income':
+                    # This style will *override* the previous ones
+                    style = 'background-color: lightgrey; font-weight: bold; color: black; border-top: 2px solid white; text-align: left; padding-left: 5px; '
+                    
+                return style
+
+            # 7. Build the *complete* Styler object
+            styled_pnl = pnl_pivoted_k.style \
+                .format(format_k_euros) \
+                .set_properties(
+                    **{
+                        # 'background-color': '#1f2937',
+                        'color': 'white',
+                        'border-color': '#4b5563'
+                    }
+                ) \
+                .set_table_styles([
+                    {
+                        'selector': 'th', # All headers (index and columns)
+                        'props': [
+                            ('background-color', '#111827'),
+                            ('color', 'white'),
+                            ('font-weight', 'bold')
+                        ]
+                    },
+                    # {
+                    #     'selector': 'th.row_heading', # Index labels (e.g., "Net Income")
+                    #     'props': [
+                    #         ('text-align', 'left'),
+                    #         ('padding-left', '5px')
+                    #     ]
+                    # },
+                    {
+                        'selector': 'th.col_heading.level0', # Index name (top-left)
+                        'props': [
+                            ('font-size', '0.8em'),
+                            ('font-style', 'italic'),
+                            ('text-align', 'left'),
+                            ('padding-left', '5px')
+                        ]
+                    }
+                ]) \
+                .apply(style_financial_rows, axis=1) \
+                .map_index(style_pnl_index_label, axis=0)
+
+            st.dataframe(styled_pnl, use_container_width=True)
+        
+        st.subheader("P&L Flow (Year 1)")
+        pnl_sankey_fig = self.visualizer.create_pnl_sankey(pnl)
+        
+        if pnl_sankey_fig:
+            st.plotly_chart(pnl_sankey_fig, use_container_width=True)
         else:
-            st.warning("P&L Statement not generated.")
-                # Function to apply bold style to the index (row labels)
-        st.subheader("Profit & Loss")
-        pnl_all = pnl.groupby(["Year"]).sum()
-        pnl_pivoted = pnl_all.set_index('Year')
-        pnl_pivoted = pnl_pivoted.T
-        st.dataframe(pnl_pivoted.style.format("{:,.2f}"))
-
-        def bold_totals(series):
-            # Example: Bold rows with 'Total' or 'Net' in their name
-            is_total = series.index.str.contains('Total|Net', case=False)
-            return ['font-weight: bold' if v else '' for v in is_total]
-
-        # Apply styling
-        styled_pnl = pnl_y1_sum.style \
-            .format("{:,.2f} €") \
-            .apply(bold_totals, axis=1) # Apply bolding function row-wise
-
-        st.dataframe(styled_pnl)
-
+            # This is the warning message you were seeing
+            st.warning("Could not generate P&L Sankey chart.")
+        
         if bs is not None:
             st.subheader("Balance Sheet (End of Year 1)")
              # Show Month 0 (Initial) and Month 12 (End of Year 1)
