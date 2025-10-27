@@ -14,6 +14,8 @@ class DataVisualizer:
     def create_pnl_sankey(self, pnl_df: Optional[pd.DataFrame]) -> Optional[go.Figure]:
         """
         Generates the Year 1 P&L Sankey diagram.
+        #TODO: Improve Sankey dynamics and visualisation, especially in case of negative net income.
+        #TODO: create a Sankey class dynamic for the CFs viz as well. 
         """
         if pnl_df is None:
             return None
@@ -52,7 +54,6 @@ class DataVisualizer:
             target = [1, 2, 3, 4, 5]
             
             # --- FIX: Use abs() for all values ---
-            # All values must be positive for the Sankey flow
             value = [
                 abs(opex), 
                 abs(noi), 
@@ -60,7 +61,6 @@ class DataVisualizer:
                 abs(depreciation), 
                 abs(ebt_calc)
             ]
-            # --- END FIX ---
 
             # 6. Handle EBT split (profit vs. loss)
             if ebt_calc >= 0:
@@ -68,19 +68,13 @@ class DataVisualizer:
                 labels[7] = f"Net Income (Profit)<br>€{net_income:,.0f}"
                 source.extend([5, 5]) # EBT -> Taxes, EBT -> Net Income
                 target.extend([6, 7])
-                
-                # --- FIX: Use abs() for all values ---
                 value.extend([abs(taxes), abs(net_income)])
-                # --- END FIX ---
             else:
                 labels[5] = f"EBT (Loss)<br>€{ebt_calc:,.0f}"
                 labels[7] = f"Net Income (Loss)<br>€{net_income:,.0f}"
                 source.extend([5, 5]) # EBT -> Taxes (0), EBT -> Net Income
                 target.extend([6, 7])
-                
-                # --- FIX: Use abs() for all values ---
                 value.extend([abs(taxes), abs(net_income)]) # taxes will be 0, net_income negative
-                # --- END FIX ---
 
             # 7. Create the figure
             fig = go.Figure(data=[go.Sankey(
@@ -98,7 +92,7 @@ class DataVisualizer:
                 ))])
 
             fig.update_layout(
-                title_text=None, # Remove title, st.subheader is better
+                title_text=None,
                 font_size=12, 
                 template="plotly_dark",
                 margin=dict(l=20, r=20, t=20, b=20) # Tighten margins
@@ -107,10 +101,75 @@ class DataVisualizer:
             return fig
 
         except Exception as e:
-            # This will print the error to your console for debugging
             print(f"Error generating Sankey chart: {e}")
             return None
 
-    # --- You can add other chart methods here later ---
-    # def create_cash_flow_waterfall(self, cf_df: pd.DataFrame) -> go.Figure:
-    #    ...
+    def create_pnl_cumulative_chart(self, pnl_df: Optional[pd.DataFrame]) -> Optional[go.Figure]:
+        """
+        Generates a cumulative line chart for key P&L metrics over the holding period.
+        """
+        if pnl_df is None:
+            return None
+
+        try:
+            # 1. Group by Year and sum to get annual figures
+            pnl_yearly = pnl_df.groupby("Year").sum()
+            
+            # 2. Select key metrics
+            metrics_to_plot = [
+                "Gross Operating Income", 
+                "Net Operating Income", 
+                "Net Income"
+            ]
+            
+            # 3. Calculate the cumulative sum (running total)
+            pnl_cumulative = pnl_yearly[metrics_to_plot].cumsum()
+            pnl_cumulative.index.name = "Year" # Ensure index is named for hover
+            
+            # 4. Create the figure
+            fig = go.Figure()
+
+            # 5. Add traces
+            fig.add_trace(go.Scatter(
+                x=pnl_cumulative.index, 
+                y=pnl_cumulative["Gross Operating Income"],
+                mode='lines+markers',
+                name='Cumulative GOI',
+                line=dict(color='cyan', width=2)
+            ))
+            
+            fig.add_trace(go.Scatter(
+                x=pnl_cumulative.index, 
+                y=pnl_cumulative["Net Operating Income"],
+                mode='lines+markers',
+                name='Cumulative NOI',
+                line=dict(color='lightgreen', width=2)
+            ))
+            
+            fig.add_trace(go.Scatter(
+                x=pnl_cumulative.index, 
+                y=pnl_cumulative["Net Income"],
+                mode='lines+markers',
+                name='Cumulative Net Income',
+                line=dict(color='white', width=3, dash='dot')
+            ))
+            
+            # 6. Update layout
+            fig.update_layout(
+                title_text=None,
+                template="plotly_dark",
+                font_size=12,
+                hovermode="x unified",
+                legend=dict(
+                    orientation="h",
+                    yanchor="bottom", y=1.02,
+                    xanchor="right", x=1
+                ),
+                margin=dict(l=20, r=20, t=20, b=20)
+            )
+            
+            return fig
+
+        except Exception as e:
+            print(f"Error generating cumulative P&L chart: {e}")
+            return None

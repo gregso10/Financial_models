@@ -10,6 +10,7 @@ class CashFlow:
     Calculates the Cash Flow statement as a monthly DataFrame
     for the duration of the holding period.
     Accepts ModelParameters via composition and requires PnL and BS results.
+    #TODO: refine CFs logic so it starts from teh EBITDA and then splits into operating CFs, Financing and Investing properly
     """
 
     def __init__(self, params: ModelParameters):
