@@ -21,6 +21,7 @@ import numpy_financial as npf
 import numpy as np
 from typing import Dict, List
 from ._1_model_params import ModelParameters
+from ._2_profit_and_loss import PnL
 
 class BalanceSheet:
     """
@@ -33,6 +34,7 @@ class BalanceSheet:
         if not isinstance(params, ModelParameters):
             raise TypeError("params must be an instance of ModelParameters")
         self.params = params
+        self.pnl = PnL().generate_pnl_dataframe(params)
 
         # --- Retrieve pre-calculated financing values ---
         self._loan_amount = getattr(params, 'loan_amount', 0.0)
