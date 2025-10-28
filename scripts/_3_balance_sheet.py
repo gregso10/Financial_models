@@ -34,7 +34,7 @@ class BalanceSheet:
         if not isinstance(params, ModelParameters):
             raise TypeError("params must be an instance of ModelParameters")
         self.params = params
-        self.pnl = PnL().generate_pnl_dataframe(params)
+        # self.pnl = PnL.generate_pnl_dataframe(params)
 
         # --- Retrieve pre-calculated financing values ---
         self._loan_amount = getattr(params, 'loan_amount', 0.0)
