@@ -70,6 +70,7 @@ class BalanceSheet:
             A pandas DataFrame containing the balanced monthly Balance Sheet statement.
         """
         num_months = self.params.holding_period_years * 12
+        initial_book_equity = self._initial_property_cost + self._initial_furnishing_cost - self._initial_loan_balance
 
         # Initialize with Month 0 data
         bs_data: Dict[str, List[float]] = {
@@ -80,7 +81,7 @@ class BalanceSheet:
             "Furnishing Accumulated Depreciation": [0.0],
             "Cash": [0.0],
             "Loan Balance": [self._initial_loan_balance],
-            "Initial Equity": [self._initial_equity],
+            "Initial Equity": [initial_book_equity],
             "Retained Earnings": [0.0],
         }
 
@@ -115,15 +116,9 @@ class BalanceSheet:
             bs_data["Furnishing Accumulated Depreciation"].append(current_furn_acc_dep)
 
             # --- Cash (UPDATED) ---
-            # Get the ending cash directly from the cash flow statement for this month
-            current_cash = cf_month_data.get("Ending Cash Balance", 0.0) # Use CF result
-            # In _3_balance_sheet.py, replace cash calculation:
-            # current_cash = prev_cash + net_income_month - principal_paid_month
-
-            # --- ADD THIS DEBUG LINE ---
-            if month == 1:
-                print(f"DEBUG BS M1: Cash value read from cf_df = {current_cash}")
-            # --- END DEBUG LINE ---
+            cf_ending_cash = cf_month_data.get("Ending Cash Balance", 0.0)
+            depreciation_month = pnl_month_data.get("Depreciation/Amortization", 0.0)
+            current_cash = cf_ending_cash - depreciation_month
 
             bs_data["Cash"].append(current_cash)
             # --- End Cash Update ---
@@ -144,30 +139,12 @@ class BalanceSheet:
 
         # Calculate Derived Rows (same as before)
         df_bs["Property Net Value"] = df_bs["Property Cost"] - df_bs["Property Accumulated Depreciation"]
-        # ... (rest of derived rows calculations are identical) ...
         df_bs["Furnishing Net Value"] = df_bs["Furnishing Cost"] - df_bs["Furnishing Accumulated Depreciation"]
         df_bs["Total Fixed Assets"] = df_bs["Property Net Value"] + df_bs["Furnishing Net Value"]
-
-        # --- Debugging Point ---
-        if 1 in df_bs.index:
-             print("\nDEBUG BS Month 1 (Before Total Assets Calc):")
-             print(f"  Total Fixed Assets: {df_bs.loc[1, 'Total Fixed Assets']}")
-             print(f"  Cash (from loop): {df_bs.loc[1, 'Cash']}") # Check the cash value just before use
-        # --- End Debugging Point ---
-
         df_bs["Total Assets"] = df_bs["Total Fixed Assets"] + df_bs["Cash"]
         df_bs["Total Liabilities"] = df_bs["Loan Balance"]
         df_bs["Total Equity"] = df_bs["Initial Equity"] + df_bs["Retained Earnings"]
         df_bs["Total Liabilities and Equity"] = df_bs["Total Liabilities"] + df_bs["Total Equity"]
-
-        # --- Debugging ---
-        if 1 in df_bs.index: # Check Month 1 specifically
-            print(f"\nDEBUG BS Month 1:")
-            print(f"  Total Assets: {df_bs.loc[1, 'Total Assets']}")
-            print(f"  Total Liab+Eq: {df_bs.loc[1, 'Total Liabilities and Equity']}")
-            print(f"  Calculated Check: {df_bs.loc[1, 'Total Assets'] - df_bs.loc[1, 'Total Liabilities and Equity']}")
-        # --- End Debugging ---
-
         df_bs["Balance Check"] = df_bs["Total Assets"] - df_bs["Total Liabilities and Equity"]
 
         # Reorder columns (same as before)
