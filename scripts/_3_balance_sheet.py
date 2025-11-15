@@ -11,22 +11,6 @@ class BalanceSheet:
     """
     Calculates the Balance Sheet statement as a monthly DataFrame
     for the duration of the holding period, including the initial state (Month 0).
-    Accepts ModelParameters via composition and requires PnL results.
-    """
-
-    # In file: scripts/_3_balance_sheet.py
-
-import pandas as pd
-import numpy_financial as npf
-import numpy as np
-from typing import Dict, List
-from ._1_model_params import ModelParameters
-from ._2_profit_and_loss import PnL
-
-class BalanceSheet:
-    """
-    Calculates the Balance Sheet statement as a monthly DataFrame
-    for the duration of the holding period, including the initial state (Month 0).
     Accepts ModelParameters (expected to contain pre-calculated transaction values)
     via composition and requires PnL results.
     """
@@ -94,7 +78,7 @@ class BalanceSheet:
             "Property Accumulated Depreciation": [0.0],
             "Furnishing Cost": [self._initial_furnishing_cost],
             "Furnishing Accumulated Depreciation": [0.0],
-            "Cash": [0.0], # <-- CORRECTED: Initial Cash is 0 after acquisition outflows
+            "Cash": [0.0],
             "Loan Balance": [self._initial_loan_balance],
             "Initial Equity": [self._initial_equity],
             "Retained Earnings": [0.0],
@@ -133,6 +117,8 @@ class BalanceSheet:
             # --- Cash (UPDATED) ---
             # Get the ending cash directly from the cash flow statement for this month
             current_cash = cf_month_data.get("Ending Cash Balance", 0.0) # Use CF result
+            # In _3_balance_sheet.py, replace cash calculation:
+            # current_cash = prev_cash + net_income_month - principal_paid_month
 
             # --- ADD THIS DEBUG LINE ---
             if month == 1:

@@ -10,7 +10,7 @@ class CashFlow:
     Calculates the Cash Flow statement as a monthly DataFrame
     for the duration of the holding period.
     Accepts ModelParameters via composition and requires PnL and BS results.
-    #TODO: refine CFs logic so it starts from teh EBITDA and then splits into operating CFs, Financing and Investing properly
+    #TODO: refine CFs logic so it starts from the EBITDA and then splits into operating CFs, Financing and Investing properly
     """
 
     def __init__(self, params: ModelParameters):
@@ -117,6 +117,7 @@ class CashFlow:
             if (month - 1) in bs_df.index and month in bs_df.index:
                  principal_paid = bs_prev_month.get("Loan Balance", 0.0) - bs_curr_month.get("Loan Balance", 0.0)
                  principal_repayment_outflow = max(0, principal_paid)
+            #TODO create a loan calculator class to get loan changes from there in both BS and CFs
 
             # CFF = Inflows - Outflows
             cff = loan_proceeds + equity_injected - principal_repayment_outflow
@@ -155,6 +156,23 @@ class CashFlow:
             print(f"\nDEBUG CF M1: Ending Cash calculated = {df_cf.loc[1, 'Ending Cash Balance']}")
             print(f"DEBUG CF M1: Components: CFO={df_cf.loc[1, 'Cash Flow from Operations (CFO)']:.2f}, CFI={df_cf.loc[1, 'Cash Flow from Investing (CFI)']:.2f}, CFF={df_cf.loc[1, 'Cash Flow from Financing (CFF)']:.2f}, BegCash={df_cf.loc[1, 'Beginning Cash Balance']:.2f}")
         # --- END DEBUG PRINT ---
+        # Add to _4_cash_flow.py in generate_cf_dataframe, inside the month==1 block:
+
+        if month == 1:
+            print(f"\n=== CF DEBUG MONTH 1 ===")
+            print(f"CFO: {cfo:.2f}")
+            print(f"  Net Income: {net_income:.2f}")
+            print(f"  Depreciation: {depreciation:.2f}")
+            print(f"CFI: {cfi:.2f}")
+            print(f"  Acquisition Outflow: {acquisition_outflow:.2f}")
+            print(f"CFF: {cff:.2f}")
+            print(f"  Loan Proceeds: {loan_proceeds:.2f}")
+            print(f"  Equity Injected: {equity_injected:.2f}")
+            print(f"  Principal Repaid: {-principal_repayment_outflow:.2f}")
+            print(f"Net Change in Cash: {net_change_in_cash:.2f}")
+            print(f"Beginning Cash: {beginning_cash:.2f}")
+            print(f"Ending Cash: {ending_cash:.2f}")
+            print(f"===================\n")
 
 
         return df_cf

@@ -64,6 +64,9 @@ class TransactionCalculator:
         results["loan_amount"] = results["total_acquisition_cost"] * self.params.loan_percentage
         results["initial_equity"] = results["total_acquisition_cost"] - results["loan_amount"]
 
+        print(f"DEBUG: Initial Equity = {results['initial_equity']}")
+        print(f"DEBUG: Total Acq Cost = {results['total_acquisition_cost']}")
+        print(f"DEBUG: Loan Amount = {results['loan_amount']}")
         monthly_payment = 0.0
         if self.params.loan_duration_years > 0 and self.params.loan_interest_rate > 0 and results["loan_amount"] > 0:
             monthly_rate = self.params.loan_interest_rate / 12

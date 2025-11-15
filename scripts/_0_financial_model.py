@@ -98,7 +98,7 @@ class FinancialModel:
         # Create a temporary BS DataFrame using the old placeholder cash logic
         # This logic should ideally be encapsulated, maybe a static method?
         num_months_temp = self.params.holding_period_years * 12
-        placeholder_bs_data = {'Cash': [self.params.initial_equity], 'Loan Balance': [self.params.loan_amount]}
+        placeholder_bs_data = {'Cash': [0.0], 'Loan Balance': [self.params.loan_amount]}
         monthly_pay = getattr(self.params, 'monthly_loan_payment', 0.0)
         for m in range(1, num_months_temp + 1):
             prev_cash = placeholder_bs_data['Cash'][-1]
