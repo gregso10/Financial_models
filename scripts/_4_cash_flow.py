@@ -88,11 +88,11 @@ class CashFlow:
             # --- 1. Cash Flow from Operations (CFO) ---
             # Indirect method: Start with Net Income, add back non-cash charges
             # Add/Subtract changes in working capital accounts (N/A for simple model)
-            if month == 1:
-                # Don't add back depreciation in Month 1 since assets just acquired
-                cfo = net_income  # Don't add depreciation
-            else:
-                cfo = net_income + depreciation 
+            # if month == 1:
+            #     # Don't add back depreciation in Month 1 since assets just acquired
+            #     cfo = net_income  # Don't add depreciation
+            # else:
+            cfo = net_income + depreciation 
             cf_data["Net Income"].append(net_income)
             cf_data["Depreciation/Amortization"].append(depreciation)
             cf_data["Cash Flow from Operations (CFO)"].append(cfo)

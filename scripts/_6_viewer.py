@@ -262,7 +262,20 @@ class ModelViewer:
         if cf is not None:
             st.subheader("Cash Flow (Year 1)")
             cf_y1 = cf[cf["Year"] == 1]
-            cf_y1_sum = cf_y1.drop(columns=['Year', 'Beginning Cash Balance', 'Ending Cash Balance']).sum().to_frame('Year 1 Total')
+            # Select columns in correct order
+            cf_cols_ordered = [
+                'Cash Flow from Operations (CFO)',
+                'Acquisition Costs Outflow', 
+                'Cash Flow from Investing (CFI)',
+                'Loan Proceeds', 'Equity Injected', 'Loan Principal Repayment',
+                'Cash Flow from Financing (CFF)',
+                'Net Change in Cash',
+                'Beginning Cash Balance',
+                'Net Change in Cash',
+                'Ending Cash Balance'
+            ]
+            cf_y1_sum = cf_y1[cf_cols_ordered].sum().to_frame('Year 1 Total')
+            # Overwrite beginning/ending with first/last values
             cf_y1_sum.loc['Beginning Cash Balance'] = cf_y1['Beginning Cash Balance'].iloc[0]
             cf_y1_sum.loc['Ending Cash Balance'] = cf_y1['Ending Cash Balance'].iloc[-1]
             st.dataframe(cf_y1_sum.style.format("{:,.2f}"))
