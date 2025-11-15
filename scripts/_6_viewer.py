@@ -229,12 +229,36 @@ class ModelViewer:
         # --- END: NEW LAYOUT ---
 
         # The BS and CF statements will now appear below the columns
+        # In _6_viewer.py, add after P&L display:
+
+        st.subheader("Balance Sheet (Yearly)")
+
         if bs is not None:
-            st.subheader("Balance Sheet (End of Year 1)")
-            bs_y1 = bs.loc[[0, 12]]
-            st.dataframe(bs_y1.style.format("{:,.2f}"))
+            # Get key months: 0, 12, 24, ...
+            key_months = [0] + [12 * y for y in range(1, params.holding_period_years + 1)]
+            bs_yearly = bs.loc[key_months]
+            
+            # Transpose for year columns
+            bs_pivoted = bs_yearly.T
+            bs_pivoted.columns = ["Initial"] + [f"Year {i}" for i in range(1, params.holding_period_years + 1)]
+            
+            # Convert to k€
+            bs_pivoted_k = bs_pivoted / 1000.0
+            bs_pivoted_k.index.name = "(in €k)"
+            
+            # Format function (reuse from P&L)
+            def format_k_euros(val):
+                if pd.isna(val): return "-"
+                val_int = int(round(val, 0))
+                if val_int < 0: return f"({abs(val_int):,})"
+                return f"{val_int:,}" if val_int != 0 else "0"
+            
+            # Style with sections
+            styled_bs = bs_pivoted_k.style.format(format_k_euros)
+            st.dataframe(styled_bs, use_container_width=True)
+
         else:
-            st.warning("Balance Sheet not generated.")
+            st.warning("Balance sheet Statement not generated.")    
 
         if cf is not None:
             st.subheader("Cash Flow (Year 1)")
