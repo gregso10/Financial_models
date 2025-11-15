@@ -113,7 +113,8 @@ class FinancialModel:
             
             # Simple cash calculation: previous + net income - principal payment
             net_income = self.pnl_statement.loc[m].get("Net Income", 0.0) if m in self.pnl_statement.index else 0.0
-            current_cash = prev_cash + net_income - principal_paid #current cash starts from net income and misses to add back current month d&A
+            depreciation = self.pnl_statement.loc[m].get("Depreciation/Amortization", 0.0) if m in self.pnl_statement.index else 0.0
+            current_cash = prev_cash + net_income + depreciation - principal_paid 
             
             placeholder_bs_data['Cash'].append(current_cash)
             placeholder_bs_data['Loan Balance'].append(current_loan_bal)
