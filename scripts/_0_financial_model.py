@@ -58,16 +58,13 @@ class FinancialModel:
         print(f"--- Running Simulation for Lease Type: {lease_type} ---")
 
         # --- 1. Perform Initial Transaction Calculations ---
-        print("Calculating initial transaction values...")
         self.calculated_params = self.transaction_calculator.calculate_all()
 
         # --- 2. Augment Parameters ---
         for key, value in self.calculated_params.items():
             setattr(self.params, key, value)
-        print("Parameters augmented with calculated values.")
 
         # --- 3. Generate Loan Schedule ---
-        print("Generating loan amortization schedule...")
         loan_calc = LoanCalculator(self.params)
         self.loan_schedule = loan_calc.generate_loan_schedule()
         
@@ -88,14 +85,12 @@ class FinancialModel:
         cf_generator = CashFlow(self.params)
 
         # --- 5. Generate P&L Statement ---
-        print("Generating P&L statement...")
         self.pnl_statement = pnl_generator.generate_pnl_dataframe(lease_type, self.loan_schedule)
         if self.pnl_statement is None or self.pnl_statement.empty:
              print("Error: P&L generation failed.")
              return
 
         # --- 6. Generate Preliminary BS for CF Input ---
-        print("Generating preliminary Balance Sheet for Cash Flow input...")
         num_months = self.params.holding_period_years * 12
         
         # Initialize placeholder BS data
@@ -118,7 +113,7 @@ class FinancialModel:
             
             # Simple cash calculation: previous + net income - principal payment
             net_income = self.pnl_statement.loc[m].get("Net Income", 0.0) if m in self.pnl_statement.index else 0.0
-            current_cash = prev_cash + net_income - principal_paid
+            current_cash = prev_cash + net_income + self.get_pnl("Depreciation/Amortization") - principal_paid
             
             placeholder_bs_data['Cash'].append(current_cash)
             placeholder_bs_data['Loan Balance'].append(current_loan_bal)
@@ -129,7 +124,6 @@ class FinancialModel:
             index=range(0, num_months + 1)
         )
         bs_df_placeholder.index.name = "Month"
-        print("Preliminary Balance Sheet generated.")
 
         # --- 7. Generate Cash Flow Statement ---
         print("Generating Cash Flow statement...")

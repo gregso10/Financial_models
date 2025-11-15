@@ -229,7 +229,6 @@ class ModelViewer:
         # --- END: NEW LAYOUT ---
 
         # The BS and CF statements will now appear below the columns
-        # In _6_viewer.py, add after P&L display:
 
         st.subheader("Balance Sheet (Yearly)")
 

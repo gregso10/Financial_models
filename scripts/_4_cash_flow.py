@@ -88,7 +88,11 @@ class CashFlow:
             # --- 1. Cash Flow from Operations (CFO) ---
             # Indirect method: Start with Net Income, add back non-cash charges
             # Add/Subtract changes in working capital accounts (N/A for simple model)
-            cfo = net_income + depreciation
+            if month == 1:
+                # Don't add back depreciation in Month 1 since assets just acquired
+                cfo = net_income  # Don't add depreciation
+            else:
+                cfo = net_income + depreciation 
             cf_data["Net Income"].append(net_income)
             cf_data["Depreciation/Amortization"].append(depreciation)
             cf_data["Cash Flow from Operations (CFO)"].append(cfo)
@@ -116,7 +120,7 @@ class CashFlow:
             principal_repayment_outflow = 0.0
             if month in loan_schedule.index:
                 principal_repayment_outflow = loan_schedule.loc[month, 'Principal Payment']
-            #TODO create a loan calculator class to get loan changes from there in both BS and CFs
+            
 
             # CFF = Inflows - Outflows
             cff = loan_proceeds + equity_injected - principal_repayment_outflow
@@ -145,35 +149,12 @@ class CashFlow:
             "Cash Flow from Operations (CFO)",
             "Acquisition Costs Outflow", "Cash Flow from Investing (CFI)",
             "Loan Proceeds", "Equity Injected", "Loan Principal Repayment",
-            "Cash Flow from Financing (CFF)", "Net Change in Cash",
-            "Beginning Cash Balance", "Ending Cash Balance"
+            "Cash Flow from Financing (CFF)", 
+            "Beginning Cash Balance", "Net Change in Cash", "Ending Cash Balance"
         ]
         df_cf = df_cf[ordered_cols]
 
-        # --- ADD DEBUG PRINT HERE ---
-        if 1 in df_cf.index:
-            print(f"\nDEBUG CF M1: Ending Cash calculated = {df_cf.loc[1, 'Ending Cash Balance']}")
-            print(f"DEBUG CF M1: Components: CFO={df_cf.loc[1, 'Cash Flow from Operations (CFO)']:.2f}, CFI={df_cf.loc[1, 'Cash Flow from Investing (CFI)']:.2f}, CFF={df_cf.loc[1, 'Cash Flow from Financing (CFF)']:.2f}, BegCash={df_cf.loc[1, 'Beginning Cash Balance']:.2f}")
-        # --- END DEBUG PRINT ---
-        # Add to _4_cash_flow.py in generate_cf_dataframe, inside the month==1 block:
-
-        if month == 1:
-            print(f"\n=== CF DEBUG MONTH 1 ===")
-            print(f"CFO: {cfo:.2f}")
-            print(f"  Net Income: {net_income:.2f}")
-            print(f"  Depreciation: {depreciation:.2f}")
-            print(f"CFI: {cfi:.2f}")
-            print(f"  Acquisition Outflow: {acquisition_outflow:.2f}")
-            print(f"CFF: {cff:.2f}")
-            print(f"  Loan Proceeds: {loan_proceeds:.2f}")
-            print(f"  Equity Injected: {equity_injected:.2f}")
-            print(f"  Principal Repaid: {-principal_repayment_outflow:.2f}")
-            print(f"Net Change in Cash: {net_change_in_cash:.2f}")
-            print(f"Beginning Cash: {beginning_cash:.2f}")
-            print(f"Ending Cash: {ending_cash:.2f}")
-            print(f"===================\n")
-
-
+        print(f"\nDEBUG: CF DataFrame columns = {df_cf.columns.tolist()}")
         return df_cf
 
 # --- (Example Usage section remains similar to before) ---
