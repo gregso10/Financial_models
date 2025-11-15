@@ -55,7 +55,7 @@ class BalanceSheet:
         if self._monthly_loan_payment == 0.0 and self._initial_loan_balance > 0:
              print("Warning (BS Init): Monthly loan payment seems missing or zero in params.")
 
-    def generate_bs_dataframe(self, pnl_df: pd.DataFrame, cf_df: pd.DataFrame) -> pd.DataFrame: # <-- Added cf_df parameter
+    def generate_bs_dataframe(self, pnl_df: pd.DataFrame, cf_df: pd.DataFrame, loan_schedule: pd.DataFrame) -> pd.DataFrame: # <-- Added cf_df parameter
         """
         Generates the full Balance Sheet DataFrame over the holding period
         on a monthly basis, including the initial state (Month 0).
@@ -129,10 +129,10 @@ class BalanceSheet:
             # --- End Cash Update ---
 
             # Liabilities & Equity (Loan Balance, Retained Earnings - same logic as before)
-            principal_paid_month = 0.0
-            if month <= self.params.loan_duration_years * 12:
-                 principal_paid_month = max(0, self._monthly_loan_payment - interest_month)
-            current_loan_balance = max(0, prev_loan_balance - principal_paid_month)
+            current_loan_balance = 0.0
+            if month in loan_schedule.index:
+                current_loan_balance = loan_schedule.loc[month, 'Ending Balance']
+
             bs_data["Loan Balance"].append(current_loan_balance)
             bs_data["Initial Equity"].append(self._initial_equity)
             current_retained_earnings = prev_retained_earnings + net_income_month

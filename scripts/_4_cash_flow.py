@@ -35,7 +35,7 @@ class CashFlow:
         if self._total_acquisition_cost == 0.0:
             print("Warning (CF Init): Total acquisition cost seems missing or zero in params.")
 
-    def generate_cf_dataframe(self, pnl_df: pd.DataFrame, bs_df: pd.DataFrame) -> pd.DataFrame:
+    def generate_cf_dataframe(self, pnl_df: pd.DataFrame, bs_df: pd.DataFrame, loan_schedule: pd.DataFrame) -> pd.DataFrame:
         """
         Generates the full Cash Flow DataFrame over the holding period (monthly).
 
@@ -107,16 +107,15 @@ class CashFlow:
             # --- 3. Cash Flow from Financing (CFF) ---
             loan_proceeds = 0.0
             equity_injected = 0.0
-            principal_repayment_outflow = 0.0
 
             if month == 1:
                 loan_proceeds = self._loan_amount # Inflow
                 equity_injected = self._initial_equity # Inflow
 
             # Principal repayment calculation (remains the same)
-            if (month - 1) in bs_df.index and month in bs_df.index:
-                 principal_paid = bs_prev_month.get("Loan Balance", 0.0) - bs_curr_month.get("Loan Balance", 0.0)
-                 principal_repayment_outflow = max(0, principal_paid)
+            principal_repayment_outflow = 0.0
+            if month in loan_schedule.index:
+                principal_repayment_outflow = loan_schedule.loc[month, 'Principal Payment']
             #TODO create a loan calculator class to get loan changes from there in both BS and CFs
 
             # CFF = Inflows - Outflows
