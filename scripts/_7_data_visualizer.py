@@ -1,31 +1,320 @@
+# In file: scripts/_7_data_visualizer.py
+
 import pandas as pd
 import plotly.graph_objects as go
 from typing import Optional
+from ._1_model_params import ModelParameters
+from ._8_loan_calculator import LoanCalculator
 
 class DataVisualizer:
     """
-    Handles the creation of all complex data visualizations (Plotly charts, etc.)
-    for the financial model.
+    Handles all data visualizations for the financial model.
+    Enhanced with dashboard charts and sensitivity analysis.
     """
 
     def __init__(self):
         pass
 
-    def create_pnl_sankey(self, pnl_df: Optional[pd.DataFrame]) -> Optional[go.Figure]:
+    # ===== DASHBOARD METHODS =====
+    
+    def create_consolidated_cf_table(self, pnl_df: Optional[pd.DataFrame], 
+                                     cf_df: Optional[pd.DataFrame],
+                                     params: ModelParameters) -> Optional[pd.DataFrame]:
         """
-        Generates the Year 1 P&L Sankey diagram.
-        #TODO: Improve Sankey dynamics and visualisation, especially in case of negative net income.
-        #TODO: create a Sankey class dynamic for the CFs viz as well. 
+        Creates consolidated cash flow table from P&L to Net Income,
+        then adds back D&A for CFO, plus CFI and CFF.
+        Shows the bridge from accounting income to cash flow.
+        """
+        if pnl_df is None or cf_df is None:
+            return None
+        
+        try:
+            # Sum over entire holding period
+            pnl_total = pnl_df.sum()
+            cf_total = cf_df.sum()
+            
+            # Build the consolidated waterfall-style table
+            data = {
+                'Total Period (€)': [
+                    pnl_total.get("Gross Operating Income", 0),
+                    -pnl_total.get("Total Operating Expenses", 0),
+                    pnl_total.get("Net Operating Income", 0),
+                    -pnl_total.get("Loan Interest", 0),
+                    -pnl_total.get("Depreciation/Amortization", 0),
+                    pnl_total.get("Taxable Income", 0),
+                    -pnl_total.get("Total Taxes", 0),
+                    pnl_total.get("Net Income", 0),
+                    pnl_total.get("Depreciation/Amortization", 0),  # Add back non-cash
+                    cf_total.get("Cash Flow from Operations (CFO)", 0),
+                    cf_total.get("Cash Flow from Investing (CFI)", 0),
+                    cf_total.get("Cash Flow from Financing (CFF)", 0),
+                    cf_total.get("Net Change in Cash", 0)
+                ]
+            }
+            
+            index = [
+                "Gross Operating Income",
+                "  Total Operating Expenses",
+                "Net Operating Income",
+                "  Loan Interest",
+                "  Depreciation/Amortization",
+                "Taxable Income",
+                "  Total Taxes",
+                "Net Income",
+                "Add back: Depreciation/Amortization",
+                "Cash Flow from Operations (CFO)",
+                "Cash Flow from Investing (CFI)",
+                "Cash Flow from Financing (CFF)",
+                "Net Change in Cash"
+            ]
+            
+            df = pd.DataFrame(data, index=index)
+            df.index.name = ""
+            
+            return df
+            
+        except Exception as e:
+            print(f"Error creating consolidated CF table: {e}")
+            return None
+
+    def create_pnl_sankey_total(self, pnl_df: Optional[pd.DataFrame]) -> Optional[go.Figure]:
+        """
+        Creates P&L Sankey diagram for the entire investment period (not just Year 1).
+        Shows flow from GOI through expenses to Net Income.
         """
         if pnl_df is None:
             return None
 
         try:
-            # 1. Get Year 1 data and sum it
+            # Sum all years
+            pnl_sum = pnl_df.sum()
+            
+            goi = pnl_sum.get("Gross Operating Income", 0)
+            opex = pnl_sum.get("Total Operating Expenses", 0)
+            noi = pnl_sum.get("Net Operating Income", 0)
+            interest = pnl_sum.get("Loan Interest", 0)
+            depreciation = pnl_sum.get("Depreciation/Amortization", 0)
+            taxes = pnl_sum.get("Total Taxes", 0)
+            net_income = pnl_sum.get("Net Income", 0)
+            
+            ebt_calc = noi - interest - depreciation
+            
+            # Node labels
+            labels = [
+                f"Gross Operating Income<br>€{goi:,.0f}",  # 0
+                f"Operating Expenses<br>€{opex:,.0f}",      # 1
+                f"Net Operating Income<br>€{noi:,.0f}",     # 2
+                f"Loan Interest<br>€{interest:,.0f}",       # 3
+                f"Depreciation<br>€{depreciation:,.0f}",    # 4
+                "Earnings Before Tax",                       # 5
+                f"Taxes<br>€{taxes:,.0f}",                  # 6
+                "Net Income"                                 # 7
+            ]
+            
+            # Define flows
+            source = [0, 0, 2, 2, 2]  # GOI splits, NOI splits
+            target = [1, 2, 3, 4, 5]
+            value = [abs(opex), abs(noi), abs(interest), abs(depreciation), abs(ebt_calc)]
+            
+            # Handle profit vs loss
+            if ebt_calc >= 0:
+                labels[5] = f"EBT (Profit)<br>€{ebt_calc:,.0f}"
+                labels[7] = f"Net Income<br>€{net_income:,.0f}"
+                source.extend([5, 5])
+                target.extend([6, 7])
+                value.extend([abs(taxes), abs(net_income)])
+            else:
+                labels[5] = f"EBT (Loss)<br>€{ebt_calc:,.0f}"
+                labels[7] = f"Net Income (Loss)<br>€{net_income:,.0f}"
+                source.extend([5, 5])
+                target.extend([6, 7])
+                value.extend([abs(taxes), abs(net_income)])
+            
+            fig = go.Figure(data=[go.Sankey(
+                node=dict(
+                    pad=15,
+                    thickness=20,
+                    line=dict(color="black", width=0.5),
+                    label=labels,
+                    color="#4a90e2"
+                ),
+                link=dict(source=source, target=target, value=value)
+            )])
+            
+            fig.update_layout(
+                title_text=None,
+                font_size=11,
+                template="plotly_dark",
+                margin=dict(l=10, r=10, t=10, b=10),
+                height=350
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Error creating P&L Sankey (total): {e}")
+            return None
+
+    def create_cf_sankey_total(self, cf_df: Optional[pd.DataFrame]) -> Optional[go.Figure]:
+        """
+        Creates Cash Flow Sankey for the entire investment period.
+        Shows sources and uses of cash across CFO/CFI/CFF.
+        """
+        if cf_df is None:
+            return None
+        
+        try:
+            cf_sum = cf_df.sum()
+            
+            # Main categories
+            cfo = cf_sum.get("Cash Flow from Operations (CFO)", 0)
+            cfi = cf_sum.get("Cash Flow from Investing (CFI)", 0)
+            cff = cf_sum.get("Cash Flow from Financing (CFF)", 0)
+            net_change = cf_sum.get("Net Change in Cash", 0)
+            
+            # Detailed breakdowns
+            acq_outflow = cf_sum.get("Acquisition Costs Outflow", 0)  # Already negative
+            loan_proceeds = cf_sum.get("Loan Proceeds", 0)
+            equity_injected = cf_sum.get("Equity Injected", 0)
+            principal_repay = cf_sum.get("Loan Principal Repayment", 0)  # Already negative
+            
+            # Node labels (adjust indices carefully)
+            labels = [
+                f"CFO<br>€{cfo:,.0f}",                              # 0
+                f"CFI<br>€{cfi:,.0f}",                              # 1
+                f"CFF<br>€{cff:,.0f}",                              # 2
+                f"Net Cash Change<br>€{net_change:,.0f}",          # 3
+                f"Acquisition<br>€{abs(acq_outflow):,.0f}",        # 4
+                f"Loan<br>€{loan_proceeds:,.0f}",                  # 5
+                f"Equity<br>€{equity_injected:,.0f}",              # 6
+                f"Principal<br>€{abs(principal_repay):,.0f}"       # 7
+            ]
+            
+            # Define flows
+            source = []
+            target = []
+            value = []
+            
+            # CFO contribution to net change
+            if cfo != 0:
+                source.append(0)
+                target.append(3)
+                value.append(abs(cfo))
+            
+            # CFI breakdown and contribution
+            if acq_outflow != 0:
+                source.append(1)
+                target.append(4)
+                value.append(abs(acq_outflow))
+            
+            if cfi != 0:
+                source.append(1)
+                target.append(3)
+                value.append(abs(cfi))
+            
+            # CFF breakdown
+            if loan_proceeds != 0:
+                source.append(5)
+                target.append(2)
+                value.append(abs(loan_proceeds))
+            
+            if equity_injected != 0:
+                source.append(6)
+                target.append(2)
+                value.append(abs(equity_injected))
+            
+            if principal_repay != 0:
+                source.append(2)
+                target.append(7)
+                value.append(abs(principal_repay))
+            
+            # CFF contribution to net change
+            if cff != 0:
+                source.append(2)
+                target.append(3)
+                value.append(abs(cff))
+            
+            fig = go.Figure(data=[go.Sankey(
+                node=dict(
+                    pad=15,
+                    thickness=20,
+                    line=dict(color="black", width=0.5),
+                    label=labels,
+                    color="#2ecc71"
+                ),
+                link=dict(source=source, target=target, value=value)
+            )])
+            
+            fig.update_layout(
+                title_text=None,
+                font_size=11,
+                template="plotly_dark",
+                margin=dict(l=10, r=10, t=10, b=10),
+                height=350
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Error creating CF Sankey (total): {e}")
+            return None
+
+    def create_loan_sensitivity_heatmap(self, params: ModelParameters) -> Optional[go.Figure]:
+        """
+        Creates loan payment sensitivity analysis as a heatmap.
+        Shows how monthly payment varies with interest rate and duration.
+        """
+        try:
+            loan_calc = LoanCalculator(params)
+            
+            # Generate sensitivity matrix
+            sensitivity_df = loan_calc.generate_sensitivity_analysis(
+                rate_delta=0.005,      # 0.5% steps
+                rate_range=0.01,       # ±1% range
+                duration_delta_months=24,  # 2-year steps
+                duration_range_months=48   # ±4 years range
+            )
+            
+            # Create heatmap
+            fig = go.Figure(data=go.Heatmap(
+                z=sensitivity_df.values,
+                x=sensitivity_df.columns,
+                y=sensitivity_df.index,
+                colorscale='RdYlGn_r',  # Red = high, Green = low
+                text=sensitivity_df.values,
+                texttemplate='€%{text:,.0f}',
+                textfont={"size": 9},
+                colorbar=dict(title="Monthly<br>Payment (€)")
+            ))
+            
+            fig.update_layout(
+                title="Loan Payment Sensitivity Analysis",
+                xaxis_title="Interest Rate",
+                yaxis_title="Loan Duration (Months)",
+                template="plotly_dark",
+                height=400,
+                margin=dict(l=60, r=80, t=60, b=60)
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Error creating loan sensitivity heatmap: {e}")
+            return None
+
+    # ===== EXISTING METHODS (Year 1 P&L, Cumulative Chart) =====
+    
+    def create_pnl_sankey(self, pnl_df: Optional[pd.DataFrame]) -> Optional[go.Figure]:
+        """
+        Generates Year 1 P&L Sankey diagram (kept for P&L detail page).
+        """
+        if pnl_df is None:
+            return None
+
+        try:
             pnl_y1 = pnl_df[pnl_df["Year"] == 1]
             pnl_y1_sum = pnl_y1.sum()
 
-            # 2. Extract P&L values
             goi = pnl_y1_sum.get("Gross Operating Income", 0)
             opex = pnl_y1_sum.get("Total Operating Expenses", 0)
             noi = pnl_y1_sum.get("Net Operating Income", 0)
@@ -34,102 +323,81 @@ class DataVisualizer:
             taxes = pnl_y1_sum.get("Total Taxes", 0)
             net_income = pnl_y1_sum.get("Net Income", 0)
 
-            # 3. Calculate intermediate EBT
             ebt_calc = noi - interest - depreciation
 
-            # 4. Define nodes (labels)
             labels = [
-                f"Gross Operating Income<br>€{goi:,.0f}",  # 0
-                f"Total OpEx<br>€{opex:,.0f}",             # 1
-                f"Net Operating Income<br>€{noi:,.0f}",    # 2
-                f"Loan Interest<br>€{interest:,.0f}",      # 3
-                f"Depreciation<br>€{depreciation:,.0f}",   # 4
-                "Earnings Before Tax",                      # 5
-                f"Total Taxes<br>€{taxes:,.0f}",           # 6
-                "Net Income"                                # 7
+                f"Gross Operating Income<br>€{goi:,.0f}",
+                f"Total OpEx<br>€{opex:,.0f}",
+                f"Net Operating Income<br>€{noi:,.0f}",
+                f"Loan Interest<br>€{interest:,.0f}",
+                f"Depreciation<br>€{depreciation:,.0f}",
+                "Earnings Before Tax",
+                f"Total Taxes<br>€{taxes:,.0f}",
+                "Net Income"
             ]
 
-            # 5. Define links (source, target, value)
-            source = [0, 0, 2, 2, 2] # GOI -> OpEx, GOI -> NOI, NOI -> Int, NOI -> Dep, NOI -> EBT
+            source = [0, 0, 2, 2, 2]
             target = [1, 2, 3, 4, 5]
-            
-            # --- FIX: Use abs() for all values ---
-            value = [
-                abs(opex), 
-                abs(noi), 
-                abs(interest), 
-                abs(depreciation), 
-                abs(ebt_calc)
-            ]
+            value = [abs(opex), abs(noi), abs(interest), abs(depreciation), abs(ebt_calc)]
 
-            # 6. Handle EBT split (profit vs. loss)
             if ebt_calc >= 0:
                 labels[5] = f"EBT (Profit)<br>€{ebt_calc:,.0f}"
-                labels[7] = f"Net Income (Profit)<br>€{net_income:,.0f}"
-                source.extend([5, 5]) # EBT -> Taxes, EBT -> Net Income
+                labels[7] = f"Net Income<br>€{net_income:,.0f}"
+                source.extend([5, 5])
                 target.extend([6, 7])
                 value.extend([abs(taxes), abs(net_income)])
             else:
                 labels[5] = f"EBT (Loss)<br>€{ebt_calc:,.0f}"
                 labels[7] = f"Net Income (Loss)<br>€{net_income:,.0f}"
-                source.extend([5, 5]) # EBT -> Taxes (0), EBT -> Net Income
+                source.extend([5, 5])
                 target.extend([6, 7])
-                value.extend([abs(taxes), abs(net_income)]) # taxes will be 0, net_income negative
+                value.extend([abs(taxes), abs(net_income)])
 
-            # 7. Create the figure
             fig = go.Figure(data=[go.Sankey(
                 node=dict(
                     pad=15,
                     thickness=20,
                     line=dict(color="black", width=0.5),
                     label=labels,
-                    color="#4a90e2" # A better blue
+                    color="#4a90e2"
                 ),
-                link=dict(
-                    source=source,
-                    target=target,
-                    value=value
-                ))])
+                link=dict(source=source, target=target, value=value)
+            )])
 
             fig.update_layout(
                 title_text=None,
-                font_size=12, 
+                font_size=12,
                 template="plotly_dark",
-                margin=dict(l=20, r=20, t=20, b=20) # Tighten margins
+                margin=dict(l=20, r=20, t=20, b=20)
             )
             
             return fig
 
         except Exception as e:
-            print(f"Error generating Sankey chart: {e}")
+            print(f"Error generating Year 1 Sankey: {e}")
             return None
 
     def create_pnl_cumulative_chart(self, pnl_df: Optional[pd.DataFrame]) -> Optional[go.Figure]:
         """
-        Generates a cumulative line chart for key P&L metrics over the holding period.
+        Generates cumulative line chart for key P&L metrics over holding period.
         """
         if pnl_df is None:
             return None
 
         try:
-            # 1. Group by Year and sum to get annual figures
             pnl_yearly = pnl_df.groupby("Year").sum()
             
-            # 2. Select key metrics
             metrics_to_plot = [
                 "Gross Operating Income", 
                 "Net Operating Income", 
                 "Net Income"
             ]
             
-            # 3. Calculate the cumulative sum (running total)
             pnl_cumulative = pnl_yearly[metrics_to_plot].cumsum()
-            pnl_cumulative.index.name = "Year" # Ensure index is named for hover
+            pnl_cumulative.index.name = "Year"
             
-            # 4. Create the figure
             fig = go.Figure()
 
-            # 5. Add traces
             fig.add_trace(go.Scatter(
                 x=pnl_cumulative.index, 
                 y=pnl_cumulative["Gross Operating Income"],
@@ -154,7 +422,6 @@ class DataVisualizer:
                 line=dict(color='white', width=3, dash='dot')
             ))
             
-            # 6. Update layout
             fig.update_layout(
                 title_text=None,
                 template="plotly_dark",
