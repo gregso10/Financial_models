@@ -38,7 +38,7 @@ class PnL:
              print("Warning: Property amortization seems missing in params.")
 
 
-    def generate_pnl_dataframe(self, lease_type: str) -> pd.DataFrame:
+    def generate_pnl_dataframe(self, lease_type: str, loan_schedule: pd.DataFrame) -> pd.DataFrame:
         """
         Generates the full P&L DataFrame over the holding period on a monthly basis.
 
@@ -102,7 +102,7 @@ class PnL:
                 occupancy_rate = assumptions.get("occupancy_rate", 0.0)
                 seasonality = assumptions.get("monthly_seasonality", [1.0]*12) # Default to 1 if missing
 
-                # Apply annual growth to daily rate
+                # Apply annual growth to daily rate                
                 current_daily_rate = daily_rate * annual_growth_factor
 
                 gross_potential_rent_month = current_daily_rate * days_in_month_approx[month_index]
@@ -160,14 +160,10 @@ class PnL:
 
             # --- 3. Financing Costs ---
             interest_month = 0.0
-            monthly_rate = self.params.loan_interest_rate / 12
-            loan_years = self.params.loan_duration_years
+            if month in loan_schedule.index:
+                interest_month = loan_schedule.loc[month, 'Interest Payment']
 
-            if monthly_rate > 0 and loan_years > 0 and self._loan_amount > 0 and month <= loan_years * 12:
-                 # npf.ipmt period is 1-based index
-                interest_month = abs(npf.ipmt(monthly_rate, month, loan_years * 12, self._loan_amount))
-
-            insurance_month = (self._yearly_loan_insurance_cost / 12) if month <= loan_years * 12 else 0.0
+            insurance_month = (self._yearly_loan_insurance_cost / 12) if month <= self.params.loan_duration_years * 12 else 0.0
 
             pnl_data["Loan Interest"].append(interest_month)
             pnl_data["Loan Insurance"].append(insurance_month)

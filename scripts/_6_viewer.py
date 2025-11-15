@@ -84,7 +84,7 @@ class ModelViewer:
         return inputs
 
 
-    def display_outputs(self, model: FinancialModel):
+    def display_outputs(self, model: FinancialModel, params: ModelParameters):
         """
         Displays the generated P&L, BS, and CF DataFrames, filtered for Year 1.
 
@@ -291,7 +291,7 @@ class ModelViewer:
             model = FinancialModel(current_params)
             try:
                 model.run_simulation(lease_type=selected_lease)
-                self.display_outputs(model)
+                self.display_outputs(model, current_params)
             except Exception as e:
                 st.error(f"An error occurred during simulation: {e}")
                 st.exception(e) # Add traceback for debugging

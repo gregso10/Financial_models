@@ -1,4 +1,4 @@
-# In file: scripts/_8_loan_calculator.py
+# In file: scripts/_9_loan_calculator.py
 
 import pandas as pd
 import numpy as np
@@ -179,42 +179,42 @@ class LoanCalculator:
         return df_sensitivity
 
 
-# # --- Example Usage ---
-# if __name__ == "__main__":
-#     # Create sample parameters
-#     from scripts._1_model_params import ModelParameters
-#     from scripts._5_transaction_calculator import TransactionCalculator
+# --- Example Usage ---
+if __name__ == "__main__":
+    # Create sample parameters
+    from scripts._1_model_params import ModelParameters
+    from scripts._5_transaction_calculator import TransactionCalculator
     
-#     params = ModelParameters(
-#         property_price=200000,
-#         loan_percentage=0.9,
-#         loan_interest_rate=0.04,
-#         loan_duration_years=20
-#     )
+    params = ModelParameters(
+        property_price=200000,
+        loan_percentage=0.9,
+        loan_interest_rate=0.04,
+        loan_duration_years=20
+    )
     
-#     # Calculate loan amount first
-#     calc = TransactionCalculator(params)
-#     results = calc.calculate_all()
-#     for key, val in results.items():
-#         setattr(params, key, val)
+    # Calculate loan amount first
+    calc = TransactionCalculator(params)
+    results = calc.calculate_all()
+    for key, val in results.items():
+        setattr(params, key, val)
     
-#     # Generate loan schedule
-#     loan_calc = LoanCalculator(params)
-#     schedule = loan_calc.generate_loan_schedule()
+    # Generate loan schedule
+    loan_calc = LoanCalculator(params)
+    schedule = loan_calc.generate_loan_schedule()
     
-#     print("--- Loan Amortization Schedule (First 12 months) ---")
-#     print(schedule.head(12))
+    print("--- Loan Amortization Schedule (First 12 months) ---")
+    print(schedule.head(12))
     
-#     print("\n--- Loan Amortization Schedule (Last 12 months) ---")
-#     print(schedule.tail(12))
+    print("\n--- Loan Amortization Schedule (Last 12 months) ---")
+    print(schedule.tail(12))
     
-#     print("\n--- Summary Statistics ---")
-#     print(f"Total Interest Paid: €{schedule['Interest Payment'].sum():,.2f}")
-#     print(f"Total Principal Paid: €{schedule['Principal Payment'].sum():,.2f}")
-#     print(f"Total Payments: €{(schedule['Interest Payment'].sum() + schedule['Principal Payment'].sum()):,.2f}")
+    print("\n--- Summary Statistics ---")
+    print(f"Total Interest Paid: €{schedule['Interest Payment'].sum():,.2f}")
+    print(f"Total Principal Paid: €{schedule['Principal Payment'].sum():,.2f}")
+    print(f"Total Payments: €{(schedule['Interest Payment'].sum() + schedule['Principal Payment'].sum()):,.2f}")
     
-#     # Generate sensitivity analysis
-#     sensitivity = loan_calc.generate_sensitivity_analysis()
+    # Generate sensitivity analysis
+    sensitivity = loan_calc.generate_sensitivity_analysis()
     
-#     print("\n--- Sensitivity Analysis: Monthly Payment ---")
-#     print(sensitivity)
+    print("\n--- Sensitivity Analysis: Monthly Payment ---")
+    print(sensitivity)
