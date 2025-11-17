@@ -77,6 +77,10 @@ class ModelParameters:
     property_value_growth_rate: float = 0.02
     exit_selling_fees_percentage: float = 0.05
 
+    # --- Investment Analysis Parameters ---
+    risk_free_rate: float = 0.035  # French OAT 20-year rate (~3.5%)
+    discount_rate: float = 0.05    # Project discount rate (includes risk premium)
+
     # --- Calculated Values (Minimal - moved to orchestrator/statements) ---
     # We keep only things directly derivable without complex logic or time series
 

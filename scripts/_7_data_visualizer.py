@@ -561,3 +561,112 @@ class DataVisualizer:
         except Exception as e:
             print(f"Error creating loan balance chart: {e}")
             return None
+
+    # ===== INVESTMENT METRICS VISUALIZATION =====
+    
+    def create_irr_sensitivity_heatmap(self, model, params) -> Optional[go.Figure]:
+        """
+        Creates IRR sensitivity heatmap varying rent growth and property growth.
+        """
+        try:
+            from ._9_investment_metrics import InvestmentMetrics
+            
+            metrics_calc = InvestmentMetrics(params)
+            cf_df = model.get_cash_flow()
+            bs_df = model.get_balance_sheet()
+            
+            # Generate sensitivity data
+            sensitivity_df = metrics_calc.generate_irr_sensitivity(cf_df, bs_df)
+            
+            if sensitivity_df.empty:
+                return None
+            
+            # Create heatmap
+            fig = go.Figure(data=go.Heatmap(
+                z=sensitivity_df.values,
+                x=sensitivity_df.columns,
+                y=sensitivity_df.index,
+                colorscale='RdYlGn',  # Green = high, Red = low
+                text=sensitivity_df.values,
+                texttemplate='%{text:.2f}%',
+                textfont={"size": 10},
+                colorbar=dict(title="IRR (%)")
+            ))
+            
+            fig.update_layout(
+                title="IRR Sensitivity Analysis",
+                xaxis_title="Rent Growth Rate",
+                yaxis_title="Property Value Growth Rate",
+                template="plotly_dark",
+                height=400,
+                margin=dict(l=80, r=80, t=60, b=60)
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Error creating IRR heatmap: {e}")
+            return None
+
+    def create_npv_football_field(self, model, params) -> Optional[go.Figure]:
+        """
+        Creates NPV football field chart showing scenario ranges.
+        """
+        try:
+            from ._9_investment_metrics import InvestmentMetrics
+            
+            metrics_calc = InvestmentMetrics(params)
+            cf_df = model.get_cash_flow()
+            bs_df = model.get_balance_sheet()
+            
+            # Generate scenarios
+            scenarios_df = metrics_calc.generate_npv_scenarios(cf_df, bs_df)
+            
+            if scenarios_df.empty:
+                return None
+            
+            # Create football field chart
+            fig = go.Figure()
+            
+            # Add bars for each scenario
+            colors = {'Pessimistic': '#e74c3c', 'Base': '#3498db', 'Optimistic': '#2ecc71'}
+            
+            for idx, row in scenarios_df.iterrows():
+                scenario = row['Scenario']
+                npv = row['NPV']
+                
+                fig.add_trace(go.Bar(
+                    x=[scenario],
+                    y=[npv],
+                    name=scenario,
+                    marker_color=colors.get(scenario, '#95a5a6'),
+                    text=[f"€{npv/1000:.1f}k"],
+                    textposition='outside',
+                    hovertemplate=(
+                        f"<b>{scenario}</b><br>" +
+                        f"NPV: €{npv:,.0f}<br>" +
+                        f"Exit: {row['Exit Price Adj']}<br>" +
+                        f"Rent: {row['Rent Adj']}<br>" +
+                        f"Discount: {row['Discount Rate']}<br>" +
+                        "<extra></extra>"
+                    )
+                ))
+            
+            # Add zero line
+            fig.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.5)
+            
+            fig.update_layout(
+                title="NPV Scenario Analysis",
+                xaxis_title="",
+                yaxis_title="NPV (€)",
+                template="plotly_dark",
+                showlegend=False,
+                height=400,
+                margin=dict(l=60, r=60, t=60, b=40)
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Error creating NPV football field: {e}")
+            return None
