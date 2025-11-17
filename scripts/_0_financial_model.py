@@ -3,11 +3,12 @@
 import pandas as pd
 from typing import Dict, Optional
 from ._1_model_params import ModelParameters
-from ._5_transaction_calculator import TransactionCalculator
-from ._8_loan_calculator import LoanCalculator
 from ._2_profit_and_loss import PnL
 from ._3_balance_sheet import BalanceSheet
 from ._4_cash_flow import CashFlow
+from ._5_transaction_calculator import TransactionCalculator
+from ._8_loan_calculator import LoanCalculator
+from ._9_investment_metrics import InvestmentMetrics
 
 class FinancialModel:
     """
@@ -34,6 +35,7 @@ class FinancialModel:
         self.pnl_statement: Optional[pd.DataFrame] = None
         self.bs_statement: Optional[pd.DataFrame] = None
         self.cf_statement: Optional[pd.DataFrame] = None
+        self.investment_metrics: Optional[Dict] = None
 
         # Instantiate calculator
         self.transaction_calculator = TransactionCalculator(self.params)
@@ -154,6 +156,30 @@ class FinancialModel:
              print(f"WARNING: Balance Sheet does not balance! Max imbalance: €{max_imbalance:,.2f}")
         else:
              print("Balance Sheet successfully generated and balanced.")
+        
+        # --- 10. Calculate Investment Metrics (NEW) ---
+        print("Calculating investment metrics (IRR, NPV, etc.)...")
+        try:
+            metrics_calculator = InvestmentMetrics(self.params)
+            self.investment_metrics = metrics_calculator.calculate_all_metrics(
+                self.cf_statement, 
+                self.bs_statement
+            )
+            
+            # Print summary
+            if self.investment_metrics:
+                print(f"  IRR: {self.investment_metrics.get('irr', 0)*100:.2f}%")
+                print(f"  NPV: €{self.investment_metrics.get('npv', 0):,.2f}")
+                print(f"  Cash-on-Cash (Y1): {self.investment_metrics.get('cash_on_cash', 0)*100:.2f}%")
+                print(f"  Equity Multiple: {self.investment_metrics.get('equity_multiple', 0):.2f}x")
+                print(f"  Exit Property Value: €{self.investment_metrics.get('exit_property_value', 0):,.2f}")
+                print(f"  Net Exit Proceeds: €{self.investment_metrics.get('net_exit_proceeds', 0):,.2f}")
+            else:
+                print("  Warning: Metrics calculation returned empty results.")
+                
+        except Exception as e:
+            print(f"  Error calculating investment metrics: {e}")
+            self.investment_metrics = None
 
         print("--- Simulation Complete ---")
 
@@ -169,11 +195,12 @@ class FinancialModel:
     
     def get_loan_schedule(self) -> Optional[pd.DataFrame]:
         return self.loan_schedule
-
-    def get_summary_metrics(self):
-        """Placeholder for calculating KPIs (e.g., ROI, IRR, Cash-on-Cash)"""
-        if self.cf_statement is None:
-            print("Run simulation first.")
-            return None
-        # ... calculate metrics ...
-        pass
+    
+    def get_investment_metrics(self) -> Optional[Dict]:
+        """
+        Returns investment performance metrics dictionary.
+        
+        Keys include: irr, npv, cash_on_cash, equity_multiple,
+                     exit_property_value, net_exit_proceeds, capital_gains_tax, etc.
+        """
+        return self.investment_metrics

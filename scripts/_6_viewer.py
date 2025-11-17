@@ -81,6 +81,11 @@ class ModelViewer:
         inputs["holding_period_years"] = st.sidebar.number_input("Holding Period (Years)", min_value=1, max_value=50, value=defaults.holding_period_years, step=1)
         inputs["property_value_growth_rate"] = st.sidebar.slider("Annual Property Value Growth", 0.0, 0.10, value=defaults.property_value_growth_rate, step=0.001, format="%.3f")
         inputs["exit_selling_fees_percentage"] = st.sidebar.slider("Selling Fees (%)", 0.0, 0.10, value=defaults.exit_selling_fees_percentage, step=0.005, format="%.3f")
+        
+        # --- Investment Analysis ---
+        st.sidebar.subheader("Investment Analysis")
+        inputs["risk_free_rate"] = st.sidebar.slider("Risk-Free Rate (OAT 20Y)", 0.0, 0.10, value=getattr(defaults, 'risk_free_rate', 0.035), step=0.001, format="%.3f", help="French government bond rate")
+        inputs["discount_rate"] = st.sidebar.slider("Discount Rate", 0.0, 0.15, value=getattr(defaults, 'discount_rate', 0.05), step=0.005, format="%.3f", help="Project discount rate (risk-free + risk premium)")
 
         return inputs
 
@@ -174,8 +179,66 @@ class ModelViewer:
         pnl = model.get_pnl()
         cf = model.get_cash_flow()
         loan_schedule = model.get_loan_schedule()
+        metrics = model.get_investment_metrics()
         
-        # Row 1: Summary Table + Sankey Charts
+        # === ROW 1: KEY INVESTMENT METRICS ===
+        if metrics:
+            st.subheader("🎯 Investment Performance Metrics")
+            
+            col_m1, col_m2, col_m3, col_m4 = st.columns(4)
+            
+            with col_m1:
+                irr_value = metrics.get('irr', 0) * 100
+                st.metric(
+                    "IRR", 
+                    f"{irr_value:.2f}%",
+                    help="Internal Rate of Return - annualized return on equity investment"
+                )
+            
+            with col_m2:
+                npv_value = metrics.get('npv', 0) / 1000
+                discount_rate = getattr(params, 'discount_rate', 0.05) * 100
+                st.metric(
+                    "NPV", 
+                    f"€{npv_value:.1f}k",
+                    help=f"Net Present Value at {discount_rate:.1f}% discount rate"
+                )
+            
+            with col_m3:
+                coc_value = metrics.get('cash_on_cash', 0) * 100
+                st.metric(
+                    "Cash-on-Cash (Y1)", 
+                    f"{coc_value:.2f}%",
+                    help="Year 1 cash flow divided by initial equity invested"
+                )
+            
+            with col_m4:
+                em_value = metrics.get('equity_multiple', 0)
+                st.metric(
+                    "Equity Multiple", 
+                    f"{em_value:.2f}x",
+                    help="Total cash returned divided by initial equity"
+                )
+            
+            # Exit details in expander
+            with st.expander("📤 Exit Scenario Details"):
+                col_e1, col_e2, col_e3 = st.columns(3)
+                
+                with col_e1:
+                    st.metric("Exit Property Value", f"€{metrics.get('exit_property_value', 0)/1000:.1f}k")
+                    st.metric("Capital Gain", f"€{metrics.get('capital_gain', 0)/1000:.1f}k")
+                
+                with col_e2:
+                    st.metric("Selling Costs", f"€{metrics.get('selling_costs', 0)/1000:.1f}k")
+                    st.metric("Capital Gains Tax", f"€{metrics.get('capital_gains_tax', 0)/1000:.1f}k")
+                
+                with col_e3:
+                    st.metric("Remaining Loan", f"€{metrics.get('remaining_loan_balance', 0)/1000:.1f}k")
+                    st.metric("Net Exit Proceeds", f"€{metrics.get('net_exit_proceeds', 0)/1000:.1f}k")
+            
+            st.markdown("---")
+        
+        # === ROW 2: CONSOLIDATED CF + SANKEY CHARTS ===
         col1, col2 = st.columns([1, 1])
         
         with col1:
@@ -195,7 +258,9 @@ class ModelViewer:
             if cf_sankey:
                 st.plotly_chart(cf_sankey, use_container_width=True)
         
-        # Row 2: Loan Analysis
+        st.markdown("---")
+        
+        # === ROW 3: LOAN ANALYSIS ===
         if loan_schedule is not None and len(loan_schedule) > 0:
             st.subheader("📋 Loan Analysis")
             
@@ -216,13 +281,59 @@ class ModelViewer:
                 if loan_chart:
                     st.plotly_chart(loan_chart, use_container_width=True)
             
-            # Row 3: Sensitivity Analysis
-            st.subheader("🔍 Payment Sensitivity Analysis")
+            # Loan sensitivity
+            st.markdown("**Payment Sensitivity Analysis**")
             sensitivity_heatmap = self.visualizer.create_loan_sensitivity_heatmap(params)
             if sensitivity_heatmap:
                 st.plotly_chart(sensitivity_heatmap, use_container_width=True)
         else:
             st.info("💰 No loan in this scenario (100% equity financing)")
+        
+        st.markdown("---")
+        
+        # === ROW 4: INVESTMENT RETURN SENSITIVITY ===
+        st.subheader("💎 Investment Return Sensitivity Analysis")
+        
+        col_sens1, col_sens2 = st.columns([1, 1])
+        
+        with col_sens1:
+            st.markdown("**IRR Sensitivity Heatmap**")
+            st.caption("Varying property value growth rate and loan interest rate")
+            
+            with st.spinner("Calculating IRR sensitivity... (this may take a moment)"):
+                irr_heatmap = self.visualizer.create_irr_sensitivity_heatmap(params)
+                
+                if irr_heatmap:
+                    st.plotly_chart(irr_heatmap, use_container_width=True)
+                else:
+                    st.warning("Could not calculate IRR sensitivity")
+        
+        with col_sens2:
+            st.markdown("**NPV Range Analysis**")
+            st.caption("Worst (low rent, high cost) / Base / Best (high rent, low cost)")
+            
+            with st.spinner("Calculating NPV range..."):
+                npv_football = self.visualizer.create_npv_football_field(params, model)
+                
+                if npv_football:
+                    st.plotly_chart(npv_football, use_container_width=True)
+                    
+                    # Show assumptions
+                    with st.expander("📋 Range Assumptions"):
+                        st.markdown("""
+                        **Worst Case:**
+                        - Rent levels: -5%
+                        - Loan interest: +1.0%
+                        
+                        **Base Case:**
+                        - Current model assumptions
+                        
+                        **Best Case:**
+                        - Rent levels: +5%
+                        - Loan interest: -0.5%
+                        """)
+                else:
+                    st.warning("Could not generate NPV range")
 
     def display_pnl_page(self):
         """P&L statement page"""
