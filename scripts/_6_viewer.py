@@ -195,14 +195,34 @@ class ModelViewer:
             if cf_sankey:
                 st.plotly_chart(cf_sankey, use_container_width=True)
         
-        # Row 2: Loan Sensitivity Heatmap
-        st.subheader("Loan Payment Sensitivity Analysis")
+        # Row 2: Loan Analysis
         if loan_schedule is not None and len(loan_schedule) > 0:
+            st.subheader("📋 Loan Analysis")
+            
+            col_loan1, col_loan2 = st.columns([1, 1])
+            
+            with col_loan1:
+                st.markdown("**Amortization Schedule (Yearly)**")
+                loan_table = self.visualizer.format_loan_schedule_table(loan_schedule)
+                if loan_table is not None:
+                    st.dataframe(
+                        loan_table.style.format("{:,.1f}"),
+                        use_container_width=True,
+                        height=400
+                    )
+            
+            with col_loan2:
+                loan_chart = self.visualizer.create_loan_balance_chart(loan_schedule)
+                if loan_chart:
+                    st.plotly_chart(loan_chart, use_container_width=True)
+            
+            # Row 3: Sensitivity Analysis
+            st.subheader("🔍 Payment Sensitivity Analysis")
             sensitivity_heatmap = self.visualizer.create_loan_sensitivity_heatmap(params)
             if sensitivity_heatmap:
                 st.plotly_chart(sensitivity_heatmap, use_container_width=True)
         else:
-            st.info("No loan in this scenario (100% equity)")
+            st.info("💰 No loan in this scenario (100% equity financing)")
 
     def display_pnl_page(self):
         """P&L statement page"""
