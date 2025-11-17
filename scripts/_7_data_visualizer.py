@@ -440,3 +440,124 @@ class DataVisualizer:
         except Exception as e:
             print(f"Error generating cumulative P&L chart: {e}")
             return None
+
+    def format_loan_schedule_table(self, loan_schedule: Optional[pd.DataFrame]) -> Optional[pd.DataFrame]:
+        """
+        Formats loan amortization schedule for display.
+        Converts to yearly summary with beginning/ending balances.
+        """
+        if loan_schedule is None or len(loan_schedule) == 0:
+            return None
+        
+        try:
+            # Add year column
+            loan_schedule_copy = loan_schedule.copy()
+            loan_schedule_copy['Year'] = ((loan_schedule_copy.index - 1) // 12) + 1
+            
+            # Group by year and aggregate
+            yearly_summary = loan_schedule_copy.groupby('Year').agg({
+                'Beginning Balance': 'first',
+                'Monthly Payment': 'sum',
+                'Interest Payment': 'sum',
+                'Principal Payment': 'sum',
+                'Ending Balance': 'last'
+            })
+            
+            # Rename for clarity
+            yearly_summary.columns = [
+                'Beginning Balance',
+                'Total Payments',
+                'Total Interest',
+                'Total Principal',
+                'Ending Balance'
+            ]
+            
+            # Convert to k€
+            yearly_summary_k = yearly_summary / 1000.0
+            yearly_summary_k.index.name = 'Year'
+            
+            return yearly_summary_k
+            
+        except Exception as e:
+            print(f"Error formatting loan schedule: {e}")
+            return None
+
+    def create_loan_balance_chart(self, loan_schedule: Optional[pd.DataFrame]) -> Optional[go.Figure]:
+        """
+        Creates chart showing loan balance decline over time with principal/interest stacked area.
+        """
+        if loan_schedule is None or len(loan_schedule) == 0:
+            return None
+        
+        try:
+            # Convert to yearly for cleaner visualization
+            loan_schedule_copy = loan_schedule.copy()
+            loan_schedule_copy['Year'] = ((loan_schedule_copy.index - 1) // 12) + 1
+            
+            yearly = loan_schedule_copy.groupby('Year').agg({
+                'Beginning Balance': 'first',
+                'Ending Balance': 'last',
+                'Interest Payment': 'sum',
+                'Principal Payment': 'sum'
+            })
+            
+            fig = go.Figure()
+            
+            # Loan balance line
+            fig.add_trace(go.Scatter(
+                x=yearly.index,
+                y=yearly['Ending Balance'],
+                mode='lines+markers',
+                name='Loan Balance',
+                line=dict(color='#e74c3c', width=3),
+                yaxis='y1'
+            ))
+            
+            # Principal payment bars
+            fig.add_trace(go.Bar(
+                x=yearly.index,
+                y=yearly['Principal Payment'],
+                name='Principal Paid',
+                marker_color='#2ecc71',
+                yaxis='y2'
+            ))
+            
+            # Interest payment bars
+            fig.add_trace(go.Bar(
+                x=yearly.index,
+                y=yearly['Interest Payment'],
+                name='Interest Paid',
+                marker_color='#3498db',
+                yaxis='y2'
+            ))
+            
+            fig.update_layout(
+                title='Loan Amortization Progress',
+                template='plotly_dark',
+                barmode='stack',
+                hovermode='x unified',
+                yaxis=dict(
+                    title='Loan Balance (€)',
+                    side='left'
+                ),
+                yaxis2=dict(
+                    title='Annual Payments (€)',
+                    side='right',
+                    overlaying='y'
+                ),
+                legend=dict(
+                    orientation='h',
+                    yanchor='bottom',
+                    y=1.02,
+                    xanchor='right',
+                    x=1
+                ),
+                margin=dict(l=60, r=60, t=60, b=40),
+                height=400
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Error creating loan balance chart: {e}")
+            return None
