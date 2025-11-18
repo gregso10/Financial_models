@@ -108,7 +108,6 @@ class PnL:
                 gross_potential_rent_month = current_daily_rate * days_in_month_approx[month_index]
                 # Apply occupancy and monthly seasonality
                 goi_month = gross_potential_rent_month * occupancy_rate * seasonality[month_index]
-                vacancy_loss_month = 0.0 # Handled via occupancy
 
             elif lease_type in ["furnished_1yr", "unfurnished_3yr"]:
                 monthly_rent_sqm = assumptions.get("monthly_rent_sqm", 0.0)
