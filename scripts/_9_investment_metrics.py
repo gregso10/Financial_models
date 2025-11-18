@@ -94,12 +94,15 @@ class InvestmentMetrics:
             # Build ANNUAL cash flow array
             cash_flows = [-self._initial_equity]  # Year 0
             
-            # Group by year and sum net changes
+            # Group by year and sum net changes (exclude Year 0 if it exists)
             cf_df_copy = cf_df.copy()
             cf_df_copy['Year_Index'] = cf_df_copy['Year']
-            annual_cf = cf_df_copy.groupby('Year_Index')['Net Change in Cash'].sum()
             
-            # Add annual cash flows
+            # Filter out Year 0 to avoid double-counting initial equity
+            cf_df_filtered = cf_df_copy[cf_df_copy['Year_Index'] > 0]
+            annual_cf = cf_df_filtered.groupby('Year_Index')['Net Change in Cash'].sum()
+            
+            # Add annual cash flows for each year
             for year in range(1, self.params.holding_period_years + 1):
                 if year in annual_cf.index:
                     cash_flows.append(annual_cf[year])
@@ -107,7 +110,8 @@ class InvestmentMetrics:
                     cash_flows.append(0.0)
             
             # Add exit proceeds to final year
-            cash_flows[-1] += net_exit_proceeds
+            if len(cash_flows) > 1:  # Ensure we have at least one year beyond initial investment
+                cash_flows[-1] += net_exit_proceeds
             
             # Calculate IRR (already annual since we used annual CFs)
             annual_irr = npf.irr(cash_flows)
@@ -214,9 +218,10 @@ class InvestmentMetrics:
 
         Args:
             lease_type: The lease type to use for simulations ("airbnb", "furnished_1yr", "unfurnished_3yr")
-            financing_cost_range: +/- range for financing growth growth (e.g., 0.01 for ±1%)
-            property_growth_range: +/- range for property value growth
-            step: Step size for variations
+                       This should match the lease type used in the base case
+            financing_cost_range: +/- range for financing costs (e.g., 0.01 for ±1%)
+            property_growth_range: +/- range for property value growth (e.g., 0.01 for ±1%)
+            step: Step size for variations (default 0.005 = 0.5%)
 
         Returns:
             DataFrame with IRR sensitivity (rows = property growth, cols = financing costs)
@@ -226,6 +231,9 @@ class InvestmentMetrics:
             
             base_financing_costs = self.params.loan_interest_rate
             base_property_growth = self.params.property_value_growth_rate
+            
+            print(f"DEBUG Sensitivity: Base financing = {base_financing_costs*100:.2f}%, Base growth = {base_property_growth*100:.2f}%")
+            print(f"DEBUG Sensitivity: Using lease_type = {lease_type}")
             
             # Generate ranges
             financing_costs_values = np.arange(
@@ -250,20 +258,24 @@ class InvestmentMetrics:
                     # Create modified params
                     params_copy = self._create_params_copy()
                     
-                    # Update growth rates
+                    # Update parameters
                     params_copy.loan_interest_rate = fin_costs
                     params_copy.property_value_growth_rate = prop_growth
+                    
+                    # Ensure initial_equity is preserved
+                    if hasattr(self.params, 'initial_equity'):
+                        params_copy.initial_equity = self.params.initial_equity
                                         
                     # Re-run model with modified params
                     model = FinancialModel(params_copy)
-                    model.run_simulation(lease_type)  # Use same lease type
+                    model.run_simulation(lease_type)  # Use the passed lease type
 
                     # Calculate IRR
                     temp_cf = model.get_cash_flow()
                     temp_bs = model.get_balance_sheet()
 
                     temp_metrics = InvestmentMetrics(params_copy)
-                    irr = temp_metrics.calculate_irr(temp_cf, temp_bs) #here seems to compute the wrong IRR. For instance Calculate_irr with base parameters compute a c.20% IRR when in the sensitiviyt table IRR is negative. I checked manually, the IRR in the calculate IRR is correct
+                    irr = temp_metrics.calculate_irr(temp_cf, temp_bs)
                     
                     irr_row.append(irr * 100)  # Convert to percentage
                 
@@ -283,6 +295,8 @@ class InvestmentMetrics:
             
         except Exception as e:
             print(f"Error generating IRR sensitivity: {e}")
+            import traceback
+            traceback.print_exc()
             return pd.DataFrame()
 
     def generate_npv_scenarios(self, cf_df: pd.DataFrame, bs_df: pd.DataFrame) -> pd.DataFrame:
