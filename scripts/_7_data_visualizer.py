@@ -579,6 +579,7 @@ class DataVisualizer:
             # Base values
             base_property_growth = params.property_value_growth_rate
             base_loan_interest = params.loan_interest_rate
+            lease_type = getattr(params, 'current_lease_type', 'furnished_1yr')
             
             # Define ranges
             property_growth_values = [
@@ -612,7 +613,7 @@ class DataVisualizer:
                     
                     try:
                         model = FinancialModel(params_copy)
-                        model.run_simulation(lease_type='furnished_1yr')
+                        model.run_simulation(lease_type)
                         
                         metrics = model.get_investment_metrics()
                         irr = metrics.get('irr', 0.0) * 100

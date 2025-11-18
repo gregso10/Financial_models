@@ -58,7 +58,8 @@ class FinancialModel:
             lease_type: The lease type ("airbnb", "furnished_1yr", "unfurnished_3yr")
         """
         print(f"--- Running Simulation for Lease Type: {lease_type} ---")
-
+        setattr(self.params, 'lease_type_used', lease_type)
+        
         # --- 1. Perform Initial Transaction Calculations ---
         self.calculated_params = self.transaction_calculator.calculate_all()
 
