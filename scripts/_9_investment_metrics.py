@@ -205,30 +205,30 @@ class InvestmentMetrics:
             return 0.0
 
     def generate_irr_sensitivity(self, cf_df: pd.DataFrame, bs_df: pd.DataFrame,
-                                 rent_growth_range: float = 0.01,
+                                 financing_cost_range: float = 0.01,
                                  property_growth_range: float = 0.01,
                                  step: float = 0.005) -> pd.DataFrame:
         """
-        Generates IRR sensitivity table varying rent growth and property value growth.
+        Generates IRR sensitivity table varying financing rate and property value growth.
         
         Args:
-            rent_growth_range: +/- range for rent growth (e.g., 0.01 for ±1%)
+            financing_cost_range: +/- range for financing growth growth (e.g., 0.01 for ±1%)
             property_growth_range: +/- range for property value growth
             step: Step size for variations
         
         Returns:
-            DataFrame with IRR sensitivity (rows = property growth, cols = rent growth)
+            DataFrame with IRR sensitivity (rows = property growth, cols = financing costs)
         """
         try:
             from ._0_financial_model import FinancialModel
             
-            base_rent_growth = self.params.rental_assumptions['furnished_1yr']['rent_growth_rate']
+            base_financing_costs = self.params.loan_interest_rate
             base_property_growth = self.params.property_value_growth_rate
             
             # Generate ranges
-            rent_growth_values = np.arange(
-                base_rent_growth - rent_growth_range,
-                base_rent_growth + rent_growth_range + step/2,
+            financing_costs_values = np.arange(
+                base_financing_costs - financing_cost_range,
+                base_financing_costs + financing_cost_range + step/2,
                 step
             )
             
@@ -244,25 +244,24 @@ class InvestmentMetrics:
             for prop_growth in property_growth_values:
                 irr_row = []
                 
-                for rent_growth in rent_growth_values:
+                for fin_costs in financing_costs_values:
                     # Create modified params
                     params_copy = self._create_params_copy()
                     
                     # Update growth rates
-                    for lease_type in params_copy.rental_assumptions:
-                        params_copy.rental_assumptions[lease_type]['rent_growth_rate'] = rent_growth
+                    params_copy.loan_interest_rate = fin_costs
                     params_copy.property_value_growth_rate = prop_growth
                     
                     # Re-run model with modified params
                     model = FinancialModel(params_copy)
-                    model.run_simulation(lease_type='furnished_1yr')  # Use same lease type
+                    model.run_simulation()  # Use same lease type
                     
                     # Calculate IRR
                     temp_cf = model.get_cash_flow()
                     temp_bs = model.get_balance_sheet()
                     
                     temp_metrics = InvestmentMetrics(params_copy)
-                    irr = temp_metrics.calculate_irr(temp_cf, temp_bs)
+                    irr = temp_metrics.calculate_irr(temp_cf, temp_bs)  #error here -- generating negative IRR instead of original one computed in calculate IRR
                     
                     irr_row.append(irr * 100)  # Convert to percentage
                 
@@ -272,7 +271,7 @@ class InvestmentMetrics:
             df_sensitivity = pd.DataFrame(
                 irr_matrix,
                 index=[f"{v*100:.1f}%" for v in property_growth_values],
-                columns=[f"{v*100:.1f}%" for v in rent_growth_values]
+                columns=[f"{v*100:.1f}%" for v in financing_costs_values]
             )
             
             df_sensitivity.index.name = "Property Growth"
