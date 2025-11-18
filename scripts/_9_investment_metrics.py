@@ -209,7 +209,7 @@ class InvestmentMetrics:
             return 0.0
 
     def generate_irr_sensitivity(self, cf_df: pd.DataFrame, bs_df: pd.DataFrame,
-                                 lease_type: str = "airbnb",
+                                 lease_type: str,
                                  financing_cost_range: float = 0.01,
                                  property_growth_range: float = 0.01,
                                  step: float = 0.005) -> pd.DataFrame:

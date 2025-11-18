@@ -292,7 +292,12 @@ class ModelViewer:
         st.markdown("---")
         
         # === ROW 4: INVESTMENT RETURN SENSITIVITY ===
+        if st.session_state.model is None:
+            return
         st.subheader("💎 Investment Return Sensitivity Analysis")
+        
+        lease_type_used = getattr(params, 'lease_type_used', 'furnished_1yr')
+        setattr(params, 'current_lease_type', lease_type_used)
         
         col_sens1, col_sens2 = st.columns([1, 1])
         
