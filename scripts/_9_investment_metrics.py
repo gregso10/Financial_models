@@ -205,17 +205,19 @@ class InvestmentMetrics:
             return 0.0
 
     def generate_irr_sensitivity(self, cf_df: pd.DataFrame, bs_df: pd.DataFrame,
+                                 lease_type: str = "airbnb",
                                  financing_cost_range: float = 0.01,
                                  property_growth_range: float = 0.01,
                                  step: float = 0.005) -> pd.DataFrame:
         """
         Generates IRR sensitivity table varying financing rate and property value growth.
-        
+
         Args:
+            lease_type: The lease type to use for simulations ("airbnb", "furnished_1yr", "unfurnished_3yr")
             financing_cost_range: +/- range for financing growth growth (e.g., 0.01 for ±1%)
             property_growth_range: +/- range for property value growth
             step: Step size for variations
-        
+
         Returns:
             DataFrame with IRR sensitivity (rows = property growth, cols = financing costs)
         """
@@ -251,17 +253,17 @@ class InvestmentMetrics:
                     # Update growth rates
                     params_copy.loan_interest_rate = fin_costs
                     params_copy.property_value_growth_rate = prop_growth
-                    
+                                        
                     # Re-run model with modified params
                     model = FinancialModel(params_copy)
-                    model.run_simulation()  # Use same lease type
-                    
+                    model.run_simulation(lease_type)  # Use same lease type
+
                     # Calculate IRR
                     temp_cf = model.get_cash_flow()
                     temp_bs = model.get_balance_sheet()
-                    
+
                     temp_metrics = InvestmentMetrics(params_copy)
-                    irr = temp_metrics.calculate_irr(temp_cf, temp_bs)  #error here -- generating negative IRR instead of original one computed in calculate IRR
+                    irr = temp_metrics.calculate_irr(temp_cf, temp_bs) #here seems to compute the wrong IRR. For instance Calculate_irr with base parameters compute a c.20% IRR when in the sensitiviyt table IRR is negative. I checked manually, the IRR in the calculate IRR is correct
                     
                     irr_row.append(irr * 100)  # Convert to percentage
                 
@@ -273,9 +275,9 @@ class InvestmentMetrics:
                 index=[f"{v*100:.1f}%" for v in property_growth_values],
                 columns=[f"{v*100:.1f}%" for v in financing_costs_values]
             )
-            
+
             df_sensitivity.index.name = "Property Growth"
-            df_sensitivity.columns.name = "Rent Growth"
+            df_sensitivity.columns.name = "Financing Costs"
             
             return df_sensitivity
             
