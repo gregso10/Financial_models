@@ -85,41 +85,32 @@ class InvestmentMetrics:
 
     def calculate_irr(self, cf_df: pd.DataFrame, bs_df: pd.DataFrame) -> float:
         """
-        Calculates Internal Rate of Return (IRR) for the investment.
-        
-        Cash flows:
-        - T=0: -Initial equity invested
-        - T=1 to N: Operating cash flows (from CF statement)
-        - T=N: + Net exit proceeds from sale
-        
-        Returns:
-            IRR as a decimal (e.g., 0.08 for 8%)
+        Calculates IRR using ANNUAL cash flows (not monthly).
         """
         try:
             exit_data = self.calculate_exit_proceeds(cf_df, bs_df)
             net_exit_proceeds = exit_data.get('net_exit_proceeds', 0.0)
             
-            # Build cash flow array
-            # Month 0: Initial investment (negative)
-            cash_flows = [-self._initial_equity]
+            # Build ANNUAL cash flow array
+            cash_flows = [-self._initial_equity]  # Year 0
             
-            # Monthly operating cash flows
-            # Use "Ending Cash Balance" changes as proxy for cash to equity holder
-            # OR better: use Net Change in Cash from CF statement
-            for month in range(1, len(cf_df) + 1):
-                if month in cf_df.index:
-                    # Cash available to equity holder = Net change in cash
-                    net_change = cf_df.loc[month, 'Net Change in Cash']
-                    cash_flows.append(net_change)
+            # Group by year and sum net changes
+            cf_df_copy = cf_df.copy()
+            cf_df_copy['Year_Index'] = cf_df_copy['Year']
+            annual_cf = cf_df_copy.groupby('Year_Index')['Net Change in Cash'].sum()
+            
+            # Add annual cash flows
+            for year in range(1, self.params.holding_period_years + 1):
+                if year in annual_cf.index:
+                    cash_flows.append(annual_cf[year])
                 else:
                     cash_flows.append(0.0)
             
-            # Add exit proceeds to final month
+            # Add exit proceeds to final year
             cash_flows[-1] += net_exit_proceeds
             
-            # Calculate IRR (annual rate from monthly cash flows)
-            monthly_irr = npf.irr(cash_flows)
-            annual_irr = (1 + monthly_irr) ** 12 - 1
+            # Calculate IRR (already annual since we used annual CFs)
+            annual_irr = npf.irr(cash_flows)
             
             return annual_irr
             
