@@ -564,30 +564,81 @@ class DataVisualizer:
 
     # ===== INVESTMENT METRICS VISUALIZATION =====
     
-    def create_irr_sensitivity_heatmap(self, model, params) -> Optional[go.Figure]:
+    def create_irr_sensitivity_heatmap(self, params: ModelParameters) -> Optional[go.Figure]:
         """
-        Creates IRR sensitivity heatmap varying rent growth and property growth.
+        Creates IRR sensitivity heatmap (same format as loan sensitivity).
+        Varies property growth rate and loan interest rate.
+        
+        Returns:
+            Plotly heatmap figure
         """
         try:
             from ._9_investment_metrics import InvestmentMetrics
+            from ._0_financial_model import FinancialModel
             
-            metrics_calc = InvestmentMetrics(params)
-            cf_df = model.get_cash_flow()
-            bs_df = model.get_balance_sheet()
+            # Base values
+            base_property_growth = params.property_value_growth_rate
+            base_loan_interest = params.loan_interest_rate
             
-            # Generate sensitivity data
-            sensitivity_df = metrics_calc.generate_irr_sensitivity(cf_df, bs_df)
+            # Define ranges
+            property_growth_values = [
+                base_property_growth - 0.01,
+                base_property_growth - 0.005,
+                base_property_growth,
+                base_property_growth + 0.005,
+                base_property_growth + 0.01
+            ]
             
-            if sensitivity_df.empty:
-                return None
+            loan_interest_values = [
+                max(0.001, base_loan_interest - 0.01),
+                max(0.001, base_loan_interest - 0.005),
+                base_loan_interest,
+                base_loan_interest + 0.005,
+                base_loan_interest + 0.01
+            ]
+            
+            # Build sensitivity matrix
+            irr_matrix = []
+            
+            for prop_growth in property_growth_values:
+                irr_row = []
+                
+                for loan_rate in loan_interest_values:
+                    import copy
+                    params_copy = copy.deepcopy(params)
+                    
+                    params_copy.property_value_growth_rate = prop_growth
+                    params_copy.loan_interest_rate = loan_rate
+                    
+                    try:
+                        model = FinancialModel(params_copy)
+                        model.run_simulation(lease_type='furnished_1yr')
+                        
+                        metrics = model.get_investment_metrics()
+                        irr = metrics.get('irr', 0.0) * 100
+                        
+                        irr_row.append(irr)
+                    except Exception as e:
+                        print(f"Error in sensitivity calculation: {e}")
+                        irr_row.append(0.0)
+                
+                irr_matrix.append(irr_row)
+            
+            # Create DataFrame
+            import pandas as pd
+            df_sensitivity = pd.DataFrame(
+                irr_matrix,
+                index=[f"{v*100:.1f}%" for v in property_growth_values],
+                columns=[f"{v*100:.1f}%" for v in loan_interest_values]
+            )
             
             # Create heatmap
             fig = go.Figure(data=go.Heatmap(
-                z=sensitivity_df.values,
-                x=sensitivity_df.columns,
-                y=sensitivity_df.index,
-                colorscale='RdYlGn',  # Green = high, Red = low
-                text=sensitivity_df.values,
+                z=df_sensitivity.values,
+                x=df_sensitivity.columns,
+                y=df_sensitivity.index,
+                colorscale='RdYlGn',
+                text=df_sensitivity.values,
                 texttemplate='%{text:.2f}%',
                 textfont={"size": 10},
                 colorbar=dict(title="IRR (%)")
@@ -595,8 +646,8 @@ class DataVisualizer:
             
             fig.update_layout(
                 title="IRR Sensitivity Analysis",
-                xaxis_title="Rent Growth Rate",
-                yaxis_title="Property Value Growth Rate",
+                xaxis_title="Loan Interest Rate",
+                yaxis_title="Property Growth Rate",
                 template="plotly_dark",
                 height=400,
                 margin=dict(l=80, r=80, t=60, b=60)
@@ -605,7 +656,7 @@ class DataVisualizer:
             return fig
             
         except Exception as e:
-            print(f"Error creating IRR heatmap: {e}")
+            print(f"Error creating IRR sensitivity heatmap: {e}")
             return None
 
     def create_npv_football_field(self, model, params) -> Optional[go.Figure]:
