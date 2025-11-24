@@ -4,262 +4,379 @@ import pandas as pd
 import numpy as np
 import requests
 import io
+import sqlite3
 from pathlib import Path
-from typing import Optional, List
+from typing import Optional, List, Generator
 import pydeck as pdk
 
 class DVFAnalyzer:
     """
-    Analyzes DVF (Demandes de Valeurs Foncières) data at scale.
-    Handles multi-year datasets with efficient geocoding.
+    Memory-efficient DVF analyzer for datasets too large for RAM.
+    Uses chunked processing + SQLite for intermediate storage.
     """
     
-    def __init__(self, data_dir: str = "/home/greg/code/gregso10/financial_models/real_estate/data"):
+    def __init__(self, 
+                 data_dir: str = "/home/greg/code/gregso10/financial_models/real_estate/data",
+                 db_path: str = "dvf_processed.db"):
         self.data_dir = Path(data_dir)
-        self.df_raw: Optional[pd.DataFrame] = None
-        self.df_clean: Optional[pd.DataFrame] = None
-        self.df_geocoded: Optional[pd.DataFrame] = None
+        self.db_path = db_path
+        self.conn = sqlite3.connect(db_path)
         
-    def load_all_files(self) -> pd.DataFrame:
-        """Load all DVF txt files from data directory."""
-        print("Loading DVF files...")
+        # Essential columns only (reduce from 43 to ~15)
+        self.essential_cols = [
+            'Date mutation', 'Nature mutation', 'Valeur fonciere', 
+            'No voie', 'Type de voie', 'Voie', 'Code postal', 'Commune',
+            'Surface reelle bati', 'No disposition', 'Code commune', 'Type local'
+        ]
+    
+    def load_and_process_incremental(self, chunksize: int = 100000):
+        """Load files one by one, process in chunks, write to SQLite."""
+        print("Processing files incrementally...")
         
-        txt_files = list(self.data_dir.rglob("*.txt"))
-        print(f"Found {len(txt_files)} files")
+        # Create table
+        self._create_tables()
         
-        dfs = []
-        for file in txt_files:
+        txt_files = sorted(self.data_dir.rglob("*.txt"))
+        total_rows = 0
+        
+        for file_idx, file in enumerate(txt_files, 1):
+            print(f"\n[{file_idx}/{len(txt_files)}] Processing {file.name}...")
+            
             try:
-                df = pd.read_csv(file, sep="|", low_memory=False)
-                # Extract year from filename or date
-                df['source_file'] = file.name
-                dfs.append(df)
-                print(f"  Loaded {file.name}: {len(df):,} rows")
+                # Read in chunks
+                for chunk_idx, chunk in enumerate(pd.read_csv(
+                    file, 
+                    sep="|", 
+                    usecols=lambda x: x in self.essential_cols,
+                    chunksize=chunksize,
+                    low_memory=False
+                ), 1):
+                    
+                    # Immediate filtering to reduce memory
+                    chunk = chunk[chunk['Nature mutation'] == 'Vente'].copy()
+                    
+                    if len(chunk) == 0:
+                        continue
+                    
+                    # Extract year
+                    chunk['Date mutation'] = pd.to_datetime(
+                        chunk['Date mutation'], 
+                        format='%d/%m/%Y', 
+                        errors='coerce'
+                    )
+                    chunk['mutation_year'] = chunk['Date mutation'].dt.year
+                    
+                    # Create mutation ID
+                    chunk['id_mutation'] = (
+                        chunk['mutation_year'].astype(str) + '_' +
+                        chunk['Date mutation'].dt.strftime('%Y%m%d').fillna('') + '_' +
+                        chunk['Valeur fonciere'].astype(str) + '_' +
+                        chunk['No disposition'].astype(str) + '_' +
+                        chunk['Code commune'].astype(str)
+                    )
+                    
+                    # Build address
+                    chunk['adresse_complete'] = (
+                        chunk['No voie'].fillna('').astype(str) + ' ' +
+                        chunk['Type de voie'].fillna('') + ' ' +
+                        chunk['Voie'].fillna('') + ' ' +
+                        chunk['Code postal'].fillna('').astype(str) + ' ' +
+                        chunk['Commune'].fillna('')
+                    ).str.strip()
+                    
+                    # Keep only needed columns
+                    chunk_slim = chunk[[
+                        'id_mutation', 'mutation_year', 'Valeur fonciere',
+                        'Surface reelle bati', 'adresse_complete', 'Type local'
+                    ]].copy()
+                    
+                    # Write to SQLite
+                    chunk_slim.to_sql('mutations_raw', self.conn, if_exists='append', index=False)
+                    
+                    total_rows += len(chunk_slim)
+                    
+                    if chunk_idx % 10 == 0:
+                        print(f"  Chunk {chunk_idx}: {total_rows:,} rows accumulated")
+                    
+                    # Force garbage collection
+                    del chunk, chunk_slim
+                    
             except Exception as e:
-                print(f"  Error loading {file.name}: {e}")
+                print(f"  Error: {e}")
+                continue
         
-        self.df_raw = pd.concat(dfs, ignore_index=True)
-        print(f"\nTotal raw records: {len(self.df_raw):,}")
-        return self.df_raw
+        print(f"\nTotal raw sales loaded: {total_rows:,}")
+        self.conn.commit()
     
-    def preprocess(self) -> pd.DataFrame:
-        """Preprocess DVF data: create IDs, remove duplicates, clean data."""
-        print("\nPreprocessing data...")
-        df = self.df_raw.copy()
+    def aggregate_mutations(self):
+        """Aggregate by mutation ID using SQL (memory efficient)."""
+        print("\nAggregating mutations in SQL...")
         
-        # 1. Extract year from date
-        df['Date mutation'] = pd.to_datetime(df['Date mutation'], format='%d/%m/%Y', errors='coerce')
-        df['mutation_year'] = df['Date mutation'].dt.year
+        query = """
+        CREATE TABLE IF NOT EXISTS mutations_agg AS
+        SELECT 
+            id_mutation,
+            MAX(mutation_year) as mutation_year,
+            MAX(CAST(REPLACE("Valeur fonciere", ',', '.') AS REAL)) as valeur_fonciere,
+            SUM(CAST("Surface reelle bati" AS REAL)) as surface_totale,
+            MAX(adresse_complete) as adresse_complete,
+            MAX("Type local") as type_local,
+            COUNT(*) as nb_lots
+        FROM mutations_raw
+        WHERE 
+            CAST(REPLACE("Valeur fonciere", ',', '.') AS REAL) > 0
+            AND CAST("Surface reelle bati" AS REAL) > 0
+            AND LENGTH(adresse_complete) > 10
+        GROUP BY id_mutation
+        """
         
-        # 2. Create unique mutation ID (WITH year for time series)
-        df['id_mutation'] = (
-            df['mutation_year'].astype(str) + '_' +
-            df['Date mutation'].astype(str) + '_' + 
-            df['Valeur fonciere'].astype(str) + '_' + 
-            df['No disposition'].astype(str) + '_' + 
-            df['Code commune'].astype(str)
-        )
+        self.conn.execute("DROP TABLE IF EXISTS mutations_agg")
+        self.conn.execute(query)
+        self.conn.commit()
         
-        # 3. Filter to sales only
-        df = df[df['Nature mutation'] == 'Vente'].copy()
-        print(f"  After filtering to sales: {len(df):,} rows")
+        count = self.conn.execute("SELECT COUNT(*) FROM mutations_agg").fetchone()[0]
+        print(f"  Aggregated mutations: {count:,}")
         
-        # 4. Aggregate by mutation (sum surfaces, build address)
-        def analyze_mutation(group):
-            first = group.iloc[0]
+        # Add price per sqm
+        self.conn.execute("""
+            ALTER TABLE mutations_agg ADD COLUMN prix_m2 REAL
+        """)
+        self.conn.execute("""
+            UPDATE mutations_agg 
+            SET prix_m2 = valeur_fonciere / NULLIF(surface_totale, 0)
+        """)
+        self.conn.commit()
+    
+    def geocode_smart_batched(self, batch_size: int = 10000):
+        """Geocode in batches to avoid memory overflow."""
+        print("\nSmart batched geocoding...")
+        
+        # Create geocoding table
+        self.conn.execute("""
+            CREATE TABLE IF NOT EXISTS geocoded_addresses (
+                adresse_complete TEXT PRIMARY KEY,
+                latitude REAL,
+                longitude REAL,
+                result_score REAL
+            )
+        """)
+        
+        # Get unique addresses not yet geocoded
+        query = """
+        SELECT DISTINCT adresse_complete 
+        FROM mutations_agg 
+        WHERE adresse_complete NOT IN (SELECT adresse_complete FROM geocoded_addresses)
+        """
+        
+        total_to_geocode = self.conn.execute(
+            f"SELECT COUNT(DISTINCT adresse_complete) FROM mutations_agg"
+        ).fetchone()[0]
+        
+        print(f"  Total unique addresses: {total_to_geocode:,}")
+        
+        batch_num = 0
+        while True:
+            # Get next batch
+            df_batch = pd.read_sql_query(
+                f"{query} LIMIT {batch_size}", 
+                self.conn
+            )
             
-            # Build address
-            num = str(int(first['No voie'])) if pd.notna(first['No voie']) else ""
-            type_voie = str(first['Type de voie']) if pd.notna(first['Type de voie']) else ""
-            voie = str(first['Voie']) if pd.notna(first['Voie']) else ""
-            code_postal = str(int(first['Code postal'])) if pd.notna(first['Code postal']) else ""
-            commune = str(first['Commune']) if pd.notna(first['Commune']) else ""
-            adresse_complete = f"{num} {type_voie} {voie} {code_postal} {commune}".strip()
+            if len(df_batch) == 0:
+                break
             
-            return pd.Series({
-                'mutation_year': first['mutation_year'],
-                'valeur_fonciere': float(str(first['Valeur fonciere']).replace(',', '.')),
-                'adresse_complete': adresse_complete,
-                'surface_totale': group['Surface reelle bati'].sum(),
-                'nb_lots': len(group),
-                'type_local': first.get('Type local', None)
-            })
+            batch_num += 1
+            print(f"  Batch {batch_num}: Geocoding {len(df_batch):,} addresses...")
+            
+            # Geocode batch
+            df_geo = self._geocode_bulk(df_batch, 'adresse_complete')
+            
+            if df_geo is not None and 'latitude' in df_geo.columns:
+                df_geo = df_geo[['adresse_complete', 'latitude', 'longitude', 'result_score']]
+                df_geo.to_sql('geocoded_addresses', self.conn, if_exists='append', index=False)
+                self.conn.commit()
+                
+                success_rate = df_geo['latitude'].notna().mean()
+                print(f"    Success rate: {success_rate*100:.1f}%")
+            
+            del df_batch, df_geo
         
-        self.df_clean = df.groupby('id_mutation', as_index=False).apply(analyze_mutation).reset_index(drop=True)
-        
-        # 5. Remove invalid data
-        self.df_clean = self.df_clean[
-            (self.df_clean['valeur_fonciere'] > 1) &
-            (self.df_clean['surface_totale'] > 1) &
-            (self.df_clean['adresse_complete'].str.len() > 10)
-        ].copy()
-        
-        # 6. Calculate price per sqm
-        self.df_clean['prix_m2'] = self.df_clean['valeur_fonciere'] / self.df_clean['surface_totale']
-        
-        print(f"  Final clean records: {len(self.df_clean):,}")
-        print(f"  Years covered: {self.df_clean['mutation_year'].min()} - {self.df_clean['mutation_year'].max()}")
-        
-        return self.df_clean
+        # Show final stats
+        geocoded_count = self.conn.execute(
+            "SELECT COUNT(*) FROM geocoded_addresses WHERE latitude IS NOT NULL"
+        ).fetchone()[0]
+        print(f"\n  Total addresses geocoded: {geocoded_count:,}")
     
-    def geocode_smart(self) -> pd.DataFrame:
-        """Geocode ONLY unique addresses, then merge back."""
-        print("\nSmart geocoding...")
+    def export_to_parquet(self, output_dir: str = "dvf_parquet"):
+        """Export final dataset partitioned by year."""
+        print("\nExporting to Parquet...")
         
-        # 1. Get unique addresses
-        unique_addresses = self.df_clean[['adresse_complete']].drop_duplicates()
-        print(f"  Unique addresses to geocode: {len(unique_addresses):,}")
+        output_path = Path(output_dir)
+        output_path.mkdir(exist_ok=True)
         
-        # 2. Geocode only unique addresses
-        df_geo_unique = self._geocode_bulk(unique_addresses, address_col='adresse_complete')
+        # Get year range
+        years = pd.read_sql_query(
+            "SELECT DISTINCT mutation_year FROM mutations_agg ORDER BY mutation_year",
+            self.conn
+        )['mutation_year'].tolist()
         
-        if df_geo_unique is None or len(df_geo_unique) == 0:
-            print("  Geocoding failed")
-            return self.df_clean
-        
-        # 3. Keep only successful geocodes
-        df_geo_unique = df_geo_unique.dropna(subset=['latitude', 'longitude'])
-        print(f"  Successfully geocoded: {len(df_geo_unique):,}")
-        
-        # 4. Merge back to full dataset
-        self.df_geocoded = self.df_clean.merge(
-            df_geo_unique[['adresse_complete', 'latitude', 'longitude', 'result_score']],
-            on='adresse_complete',
-            how='left'
-        )
-        
-        geocoded_count = self.df_geocoded['latitude'].notna().sum()
-        print(f"  Total records with coordinates: {geocoded_count:,} ({geocoded_count/len(self.df_geocoded)*100:.1f}%)")
-        
-        return self.df_geocoded
+        for year in years:
+            print(f"  Exporting year {year}...")
+            
+            query = """
+            SELECT 
+                m.id_mutation,
+                m.mutation_year,
+                m.valeur_fonciere,
+                m.surface_totale,
+                m.prix_m2,
+                m.adresse_complete,
+                m.type_local,
+                m.nb_lots,
+                g.latitude,
+                g.longitude,
+                g.result_score
+            FROM mutations_agg m
+            LEFT JOIN geocoded_addresses g ON m.adresse_complete = g.adresse_complete
+            WHERE m.mutation_year = ?
+            """
+            
+            df_year = pd.read_sql_query(query, self.conn, params=(year,))
+            
+            file_path = output_path / f"year={year}.parquet"
+            df_year.to_parquet(file_path, index=False, engine='pyarrow')
+            
+            print(f"    Saved {len(df_year):,} rows")
+            del df_year
     
-    def _geocode_bulk(self, df: pd.DataFrame, address_col: str = 'adresse_complete') -> pd.DataFrame:
+    def _geocode_bulk(self, df: pd.DataFrame, address_col: str) -> Optional[pd.DataFrame]:
         """Call BAN API for bulk geocoding."""
-        csv_buffer = io.BytesIO()
-        df.to_csv(csv_buffer, index=False, encoding='utf-8')
-        csv_buffer.seek(0)
-        
-        url = "https://api-adresse.data.gouv.fr/search/csv/"
-        files = {'data': ('data.csv', csv_buffer)}
-        data = {
-            'columns': address_col,
-            'result_columns': ['latitude', 'longitude', 'result_score']
-        }
-        
         try:
+            csv_buffer = io.BytesIO()
+            df.to_csv(csv_buffer, index=False, encoding='utf-8')
+            csv_buffer.seek(0)
+            
+            url = "https://api-adresse.data.gouv.fr/search/csv/"
+            files = {'data': ('data.csv', csv_buffer)}
+            data = {
+                'columns': address_col,
+                'result_columns': ['latitude', 'longitude', 'result_score']
+            }
+            
             response = requests.post(url, files=files, data=data, timeout=300)
             response.raise_for_status()
             return pd.read_csv(io.StringIO(response.text))
         except Exception as e:
-            print(f"  Geocoding error: {e}")
-            return df
+            print(f"    Geocoding error: {e}")
+            return None
     
-    def filter_for_visualization(self, 
-                                 year: Optional[int] = None,
-                                 min_price: float = 0,
-                                 max_price: float = float('inf'),
-                                 city: Optional[str] = None) -> pd.DataFrame:
-        """Filter dataset for visualization."""
-        df = self.df_geocoded.copy()
+    def _create_tables(self):
+        """Create SQLite tables."""
+        self.conn.execute("DROP TABLE IF EXISTS mutations_raw")
+        self.conn.execute("""
+            CREATE TABLE mutations_raw (
+                id_mutation TEXT,
+                mutation_year INTEGER,
+                "Valeur fonciere" TEXT,
+                "Surface reelle bati" TEXT,
+                adresse_complete TEXT,
+                "Type local" TEXT
+            )
+        """)
+        self.conn.commit()
+    
+    def load_for_analysis(self, 
+                         year: Optional[int] = None,
+                         city: Optional[str] = None,
+                         max_rows: int = 100000) -> pd.DataFrame:
+        """Load filtered dataset for analysis/visualization."""
+        query = """
+        SELECT 
+            m.mutation_year,
+            m.valeur_fonciere,
+            m.surface_totale,
+            m.prix_m2,
+            m.adresse_complete,
+            m.type_local,
+            g.latitude,
+            g.longitude
+        FROM mutations_agg m
+        LEFT JOIN geocoded_addresses g ON m.adresse_complete = g.adresse_complete
+        WHERE g.latitude IS NOT NULL
+        """
         
+        params = []
         if year:
-            df = df[df['mutation_year'] == year]
-        if min_price > 0:
-            df = df[df['valeur_fonciere'] >= min_price]
-        if max_price < float('inf'):
-            df = df[df['valeur_fonciere'] <= max_price]
+            query += " AND m.mutation_year = ?"
+            params.append(year)
         if city:
-            df = df[df['adresse_complete'].str.contains(city, case=False, na=False)]
+            query += " AND m.adresse_complete LIKE ?"
+            params.append(f"%{city}%")
         
-        print(f"Filtered to {len(df):,} records for visualization")
-        return df
+        query += f" LIMIT {max_rows}"
+        
+        return pd.read_sql_query(query, self.conn, params=params)
     
-    def create_3d_visualization(self, df: pd.DataFrame, output_file: str = "dvf_3d_map.html"):
-        """Generate 3D pydeck visualization."""
-        # Color gradient
+    def create_3d_visualization(self, df: pd.DataFrame, output_file: str = "dvf_3d.html"):
+        """Generate 3D map (same as before)."""
         max_val = df['valeur_fonciere'].max()
         log_max = np.log1p(max_val)
-        
         df['color'] = df['valeur_fonciere'].apply(
             lambda x: self._get_heatmap_color(np.log1p(x) / log_max)
         )
         
-        # View configuration
         view_state = pdk.ViewState(
             latitude=df['latitude'].mean(),
             longitude=df['longitude'].mean(),
-            zoom=13,
-            pitch=60,
-            bearing=45
+            zoom=12, pitch=60, bearing=45
         )
         
-        # Column layer
         layer = pdk.Layer(
             "ColumnLayer",
             data=df,
             get_position=["longitude", "latitude"],
             get_elevation="valeur_fonciere",
-            radius=25,
-            diskResolution=4,  # Square buildings
-            angle=45,
+            radius=25, diskResolution=4, angle=45,
             elevation_scale=0.001,
             get_fill_color="color",
-            pickable=True,
-            extruded=True,
-            auto_highlight=True,
-            material={
-                "ambient": 0.2,
-                "diffuse": 0.8,
-                "shininess": 32,
-                "specularColor": [255, 255, 255]
-            }
+            pickable=True, extruded=True,
         )
         
-        # Render
-        deck = pdk.Deck(
+        pdk.Deck(
             layers=[layer],
             initial_view_state=view_state,
             map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
-            tooltip={"html": "<b>Prix:</b> {valeur_fonciere} €<br/>{adresse_complete}<br/><b>Surface:</b> {surface_totale} m²<br/><b>Prix/m²:</b> {prix_m2:.0f} €"}
-        )
+            tooltip={"html": "<b>{valeur_fonciere}€</b><br/>{adresse_complete}<br/>{prix_m2:.0f}€/m²"}
+        ).to_html(output_file)
         
-        deck.to_html(output_file)
-        print(f"Saved visualization to {output_file}")
+        print(f"Saved to {output_file}")
     
     @staticmethod
-    def _get_heatmap_color(normalized_value: float) -> List[int]:
-        """Blue -> Cyan -> Green -> Yellow -> Red gradient."""
-        v = max(0, min(1, normalized_value))
-        
-        if v < 0.25:
-            return [0, int(v * 4 * 255), 255, 180]
-        elif v < 0.5:
-            return [0, 255, int(255 - (v - 0.25) * 4 * 255), 180]
-        elif v < 0.75:
-            return [int((v - 0.5) * 4 * 255), 255, 0, 180]
-        else:
-            return [255, int(255 - (v - 0.75) * 4 * 255), 0, 180]
+    def _get_heatmap_color(v: float) -> List[int]:
+        """Blue->Green->Yellow->Red gradient."""
+        v = max(0, min(1, v))
+        if v < 0.25: return [0, int(v*4*255), 255, 180]
+        elif v < 0.5: return [0, 255, int(255-(v-0.25)*4*255), 180]
+        elif v < 0.75: return [int((v-0.5)*4*255), 255, 0, 180]
+        else: return [255, int(255-(v-0.75)*4*255), 0, 180]
+    
+    def close(self):
+        """Close database connection."""
+        self.conn.close()
 
 
 # === USAGE ===
 if __name__ == "__main__":
     analyzer = DVFAnalyzer()
     
-    # Pipeline
-    analyzer.load_all_files()
-    analyzer.preprocess()
-    analyzer.geocode_smart()
+    # Full pipeline (memory efficient)
+    analyzer.load_and_process_incremental(chunksize=50000)  # Adjust based on RAM
+    analyzer.aggregate_mutations()
+    analyzer.geocode_smart_batched(batch_size=5000)  # Smaller batches
+    analyzer.export_to_parquet("dvf_parquet")
     
-    # Visualize 2024 data
-    df_viz = analyzer.filter_for_visualization(
-        year=2024,
-        min_price=50000,
-        max_price=1000000,
-        city="Paris"
-    )
+    # Visualize Paris 2024
+    df_viz = analyzer.load_for_analysis(year=2024, city="Paris", max_rows=50000)
+    analyzer.create_3d_visualization(df_viz, "paris_2024.html")
     
-    analyzer.create_3d_visualization(df_viz, "paris_2024_3d.html")
-    
-    # Save processed data for ML
-    analyzer.df_geocoded.to_parquet("dvf_processed.parquet", index=False)
-    print("\nSaved processed data for ML")
+    analyzer.close()
