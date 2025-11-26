@@ -5,6 +5,7 @@ import numpy as np
 import numpy_financial as npf
 from typing import Dict, List, Tuple, Optional
 from ._1_model_params import ModelParameters
+from ._11_taxes import Taxes
 
 class InvestmentMetrics:
     """
@@ -25,64 +26,71 @@ class InvestmentMetrics:
         self.params = params
         self._initial_equity = getattr(params, 'initial_equity', 0.0)
         self._property_price = params.property_price
+        self.tax_calculator = Taxes(params)
 
     def calculate_exit_proceeds(self, cf_df: pd.DataFrame, bs_df: pd.DataFrame) -> Dict[str, float]:
         """
         Calculates net proceeds from property sale at end of holding period.
+        Uses the Taxes class to calculate capital gains tax, respecting the 25-year exemption rule.
         
         Returns:
             Dict with: exit_property_value, selling_costs, remaining_loan_balance,
-                      gross_proceeds, capital_gain, capital_gains_tax, net_exit_proceeds
+                    gross_proceeds, capital_gain, capital_gains_tax, net_exit_proceeds
         """
         try:
             holding_years = self.params.holding_period_years
             growth_rate = self.params.property_value_growth_rate
             
-            # Calculate exit property value
+            # 1. Estimate Selling Price (Future Value)
             exit_property_value = self._property_price * ((1 + growth_rate) ** holding_years)
             
-            # Selling costs
+            # 2. Selling Costs (Agency fees etc. on resale)
             selling_costs = exit_property_value * self.params.exit_selling_fees_percentage
+            net_selling_price = exit_property_value - selling_costs
             
-            # Remaining loan balance at exit
-            final_month = holding_years * 12
-            remaining_loan = bs_df.loc[final_month, 'Loan Balance'] if final_month in bs_df.index else 0.0
+            # 3. Remaining Loan Balance
+            # Get the loan balance at the very end of the holding period
+            final_month_index = holding_years * 12
+            if final_month_index in bs_df.index:
+                remaining_loan_balance = bs_df.loc[final_month_index, "Loan Balance"]
+            else:
+                # Fallback if index not found (e.g. loan paid off or indexing issue)
+                remaining_loan_balance = 0.0
+                
+            # 4. Capital Gains Tax
+            # Delegate calculation to Taxes class to apply specific rules (abatement, 25yr exemption)
+            # We use the original property price as the purchase price basis (simplified)
+            tax_results = self.tax_calculator.calculate_capital_gain_tax(
+                selling_price=net_selling_price,
+                purchase_price=self._property_price,
+                years_held=holding_years
+            )
             
-            # Gross proceeds before tax
-            gross_proceeds = exit_property_value - selling_costs - remaining_loan
-            
-            # Calculate capital gain
-            # Acquisition cost = initial property book value
-            acquisition_cost = getattr(self.params, 'total_acquisition_cost', self._property_price)
-            
-            # Depreciation taken reduces cost basis
-            total_depreciation = bs_df.loc[final_month, 'Property Accumulated Depreciation'] if final_month in bs_df.index else 0.0
-            
-            adjusted_cost_basis = acquisition_cost - total_depreciation
-            capital_gain = exit_property_value - adjusted_cost_basis
-            
-            # Capital gains tax (simplified - flat rate, no abatements for now)
-            # French CGT: 19% + 17.2% social contributions = 36.2% total
-            capital_gains_tax_rate = 0.362
-            capital_gains_tax = max(0, capital_gain * capital_gains_tax_rate)
-            
-            # Net exit proceeds
-            net_exit_proceeds = gross_proceeds - capital_gains_tax
+            capital_gains_tax = tax_results["total_exit_tax"]
+            capital_gain = tax_results["gross_capital_gain"]
+
+            # 5. Net Exit Proceeds (Cash flow to equity holder)
+            # Net Sale Price - Mortgage Balance - Taxes
+            net_exit_proceeds = net_selling_price - remaining_loan_balance - capital_gains_tax
             
             return {
-                'exit_property_value': exit_property_value,
-                'selling_costs': selling_costs,
-                'remaining_loan_balance': remaining_loan,
-                'gross_proceeds': gross_proceeds,
-                'capital_gain': capital_gain,
-                'capital_gains_tax': capital_gains_tax,
-                'net_exit_proceeds': net_exit_proceeds
+                "exit_property_value": exit_property_value,
+                "selling_costs": selling_costs,
+                "net_selling_price": net_selling_price,
+                "remaining_loan_balance": remaining_loan_balance,
+                "capital_gain": capital_gain,
+                "capital_gains_tax": capital_gains_tax,
+                "net_exit_proceeds": net_exit_proceeds
             }
             
         except Exception as e:
             print(f"Error calculating exit proceeds: {e}")
-            return {}
-
+            return {
+                "exit_property_value": 0.0, "selling_costs": 0.0, "net_selling_price": 0.0,
+                "remaining_loan_balance": 0.0, "capital_gain": 0.0, "capital_gains_tax": 0.0,
+                "net_exit_proceeds": 0.0
+            }
+        
     def calculate_irr(self, cf_df: pd.DataFrame, bs_df: pd.DataFrame) -> float:
         """
         Calculates IRR using ANNUAL cash flows (not monthly).
@@ -232,8 +240,8 @@ class InvestmentMetrics:
             base_financing_costs = self.params.loan_interest_rate
             base_property_growth = self.params.property_value_growth_rate
             
-            print(f"DEBUG Sensitivity: Base financing = {base_financing_costs*100:.2f}%, Base growth = {base_property_growth*100:.2f}%")
-            print(f"DEBUG Sensitivity: Using lease_type = {lease_type}")
+            # print(f"DEBUG Sensitivity: Base financing = {base_financing_costs*100:.2f}%, Base growth = {base_property_growth*100:.2f}%")
+            # print(f"DEBUG Sensitivity: Using lease_type = {lease_type}")
             
             # Generate ranges
             financing_costs_values = np.arange(
@@ -299,63 +307,85 @@ class InvestmentMetrics:
             traceback.print_exc()
             return pd.DataFrame()
 
-    def generate_npv_scenarios(self, cf_df: pd.DataFrame, bs_df: pd.DataFrame) -> pd.DataFrame:
+    def generate_npv_sensitivity(self, cf_df: pd.DataFrame, bs_df: pd.DataFrame,
+                               lease_type,
+                               discount_rate,
+                               financing_cost_range: float = 0.01,
+                               property_growth_range: float = 0.01,
+                               step: float = 0.005) -> pd.DataFrame:
         """
-        Generates NPV scenarios (Pessimistic, Base, Optimistic) for football field chart.
+        Generates NPV scenarios as a datatable
         
-        Varies: exit price, rents, discount rate
+        Varies: growth, discount rate, financing costs
         
         Returns:
             DataFrame with scenario results
         """
         try:
-            scenarios_data = []
             
-            # Base case
-            base_npv = self.calculate_npv(cf_df, bs_df)
-            scenarios_data.append({
-                'Scenario': 'Base',
-                'NPV': base_npv,
-                'Exit Price Adj': '0%',
-                'Rent Adj': '0%',
-                'Discount Rate': f"{getattr(self.params, 'discount_rate', 0.05)*100:.1f}%"
-            })
+            from ._0_financial_model import FinancialModel
             
-            # Pessimistic: -10% exit, -5% rents, +2% discount
-            # Optimistic: +10% exit, +5% rents, -1% discount
+            base_financing_costs = self.params.loan_interest_rate
+            base_property_growth = self.params.property_value_growth_rate
+
+            # Generate ranges
+            financing_costs_values = np.arange(
+                base_financing_costs - financing_cost_range,
+                base_financing_costs + financing_cost_range + step/2,
+                step
+            )
             
-            # This requires re-running models - simplified version here
-            # In production, you'd re-simulate with adjusted params
+            property_growth_values = np.arange(
+                base_property_growth - property_growth_range,
+                base_property_growth + property_growth_range + step/2,
+                step
+            )
             
-            # Approximate by adjusting exit proceeds manually
-            exit_data = self.calculate_exit_proceeds(cf_df, bs_df)
+            # Build sensitivity matrix
+            npv_matrix = []
             
-            # Pessimistic
-            pessimistic_exit = exit_data['net_exit_proceeds'] * 0.9
-            pessimistic_npv = base_npv - (exit_data['net_exit_proceeds'] - pessimistic_exit) * 0.5
-            scenarios_data.append({
-                'Scenario': 'Pessimistic',
-                'NPV': pessimistic_npv,
-                'Exit Price Adj': '-10%',
-                'Rent Adj': '-5%',
-                'Discount Rate': f"{(getattr(self.params, 'discount_rate', 0.05)+0.02)*100:.1f}%"
-            })
+            for prop_growth in property_growth_values:
+                npv_row = []
+                
+                for fin_costs in financing_costs_values:
+                    # Create modified params
+                    params_copy = self._create_params_copy()
+                    
+                    # Update parameters
+                    params_copy.loan_interest_rate = fin_costs
+                    params_copy.property_value_growth_rate = prop_growth
+                    
+                    # Ensure initial_equity is preserved
+                    if hasattr(self.params, 'initial_equity'):
+                        params_copy.initial_equity = self.params.initial_equity
+                                        
+                    # Re-run model with modified params
+                    model = FinancialModel(params_copy)
+                    model.run_simulation(lease_type)  # Use the passed lease type
+
+                    # Calculate IRR
+                    temp_cf = model.get_cash_flow()
+                    temp_bs = model.get_balance_sheet()
+
+                    temp_metrics = InvestmentMetrics(params_copy)
+                    npv = temp_metrics.calculate_npv(temp_cf, temp_bs, discount_rate)
+
+                    npv_row.append(npv * 100)  # Convert to percentage
+                
+                npv_matrix.append(npv_row)
             
-            # Optimistic
-            optimistic_exit = exit_data['net_exit_proceeds'] * 1.1
-            optimistic_npv = base_npv + (optimistic_exit - exit_data['net_exit_proceeds']) * 0.5
-            scenarios_data.append({
-                'Scenario': 'Optimistic',
-                'NPV': optimistic_npv,
-                'Exit Price Adj': '+10%',
-                'Rent Adj': '+5%',
-                'Discount Rate': f"{(getattr(self.params, 'discount_rate', 0.05)-0.01)*100:.1f}%"
-            })
+            # Create DataFrame
+            df_sensitivity = pd.DataFrame(
+                npv_matrix,
+                index=[f"{v*100:.1f}%" for v in property_growth_values],
+                columns=[f"{v*100:.1f}%" for v in financing_costs_values]
+            )
+
+            df_sensitivity.index.name = "Property Growth"
+            df_sensitivity.columns.name = "Financing Costs"
             
-            df_scenarios = pd.DataFrame(scenarios_data)
-            
-            return df_scenarios
-            
+            return df_sensitivity
+
         except Exception as e:
             print(f"Error generating NPV scenarios: {e}")
             return pd.DataFrame()

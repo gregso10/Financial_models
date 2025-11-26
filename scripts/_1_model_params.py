@@ -72,12 +72,6 @@ class ModelParameters:
     personal_income_tax_bracket: float = 0.30 # TMI
     social_contributions_rate: float = 0.172 # Prélèvements Sociaux
 
-    # paramètre de taxe en France
-    # LMNP: ? - IR -- réel (on peut amortir, déduire travaux + charges mais avec des paliers) ou micro (pas d'amortissement et 30% PFU)
-    # Particulier: IR 
-    # SCI: IS
-    # Sociétés: IS
-
     # --- Exit Parameters ---
     holding_period_years: int = 10
     property_value_growth_rate: float = 0.02

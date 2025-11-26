@@ -88,7 +88,7 @@ class FinancialModel:
         cf_generator = CashFlow(self.params)
 
         # --- 5. Generate P&L Statement ---
-        self.pnl_statement = pnl_generator.generate_pnl_dataframe(lease_type, self.loan_schedule)
+        self.pnl_statement = pnl_generator.generate_pnl_dataframe(lease_type) #, self.loan_schedule
         if self.pnl_statement is None or self.pnl_statement.empty:
              print("Error: P&L generation failed.")
              return

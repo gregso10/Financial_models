@@ -660,65 +660,102 @@ class DataVisualizer:
             print(f"Error creating IRR sensitivity heatmap: {e}")
             return None
 
-    def create_npv_football_field(self, model, params) -> Optional[go.Figure]:
+    def create_npv_sensitivity_heatmap(self, params: ModelParameters) -> Optional[go.Figure]:
         """
-        Creates NPV football field chart showing scenario ranges.
+        Creates IRR sensitivity heatmap (same format as loan sensitivity).
+        Varies property growth rate and loan interest rate.
+        
+        Returns:
+            Plotly heatmap figure
         """
         try:
-            from ._9_investment_metrics import InvestmentMetrics
+            from ._0_financial_model import FinancialModel
             
-            metrics_calc = InvestmentMetrics(params)
-            cf_df = model.get_cash_flow()
-            bs_df = model.get_balance_sheet()
+            # Base values
+            base_property_growth = params.property_value_growth_rate
+            base_loan_interest = params.loan_interest_rate
+            lease_type = getattr(params, 'current_lease_type', 'furnished_1yr')
             
-            # Generate scenarios
-            scenarios_df = metrics_calc.generate_npv_scenarios(cf_df, bs_df)
+            # Define ranges
+            property_growth_values = [
+                base_property_growth - 0.01,
+                base_property_growth - 0.005,
+                base_property_growth,
+                base_property_growth + 0.005,
+                base_property_growth + 0.01
+            ]
             
-            if scenarios_df.empty:
-                return None
+            loan_interest_values = [
+                max(0.001, base_loan_interest - 0.01),
+                max(0.001, base_loan_interest - 0.005),
+                base_loan_interest,
+                base_loan_interest + 0.005,
+                base_loan_interest + 0.01
+            ]
             
-            # Create football field chart
-            fig = go.Figure()
+            # Build sensitivity matrix
+            npv_matrix = []
             
-            # Add bars for each scenario
-            colors = {'Pessimistic': '#e74c3c', 'Base': '#3498db', 'Optimistic': '#2ecc71'}
-            
-            for idx, row in scenarios_df.iterrows():
-                scenario = row['Scenario']
-                npv = row['NPV']
+            for prop_growth in property_growth_values:
+                npv_row = []
                 
-                fig.add_trace(go.Bar(
-                    x=[scenario],
-                    y=[npv],
-                    name=scenario,
-                    marker_color=colors.get(scenario, '#95a5a6'),
-                    text=[f"€{npv/1000:.1f}k"],
-                    textposition='outside',
-                    hovertemplate=(
-                        f"<b>{scenario}</b><br>" +
-                        f"NPV: €{npv:,.0f}<br>" +
-                        f"Exit: {row['Exit Price Adj']}<br>" +
-                        f"Rent: {row['Rent Adj']}<br>" +
-                        f"Discount: {row['Discount Rate']}<br>" +
-                        "<extra></extra>"
-                    )
-                ))
+                for loan_rate in loan_interest_values:
+                    import copy
+                    params_copy = copy.deepcopy(params)
+                    
+                    params_copy.property_value_growth_rate = prop_growth
+                    params_copy.loan_interest_rate = loan_rate
+                    
+                    try:
+                        model = FinancialModel(params_copy)
+                        model.run_simulation(lease_type)
+                        
+                        metrics = model.get_investment_metrics()
+                        npv = metrics.get('npv', 0.0)/1000
+                        
+                        npv_row.append(npv)
+                    except Exception as e:
+                        print(f"Error in sensitivity calculation: {e}")
+                        npv_row.append(0.0)
+                
+                npv_matrix.append(npv_row)
             
-            # Add zero line
-            fig.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.5)
+            # Create DataFrame
+
+            df_sensitivity = pd.DataFrame(
+                npv_matrix,
+                index=[f"{v*100:.1f}%" for v in property_growth_values],
+                columns=[f"{v*100:.1f}%" for v in loan_interest_values]
+            )
+            
+            text_values = [
+                [f"({abs(val):.2f})k" if val < 0 else f"{val:.2f}k" for val in row]
+                for row in df_sensitivity.values
+            ]
+            
+            # Create heatmap
+            fig = go.Figure(data=go.Heatmap(
+                z=df_sensitivity.values,
+                x=df_sensitivity.columns,
+                y=df_sensitivity.index,
+                colorscale='RdYlGn',
+                text=text_values,
+                texttemplate='%{text}',
+                textfont={"size": 10},
+                colorbar=dict(title="NPV (k)")
+            ))
             
             fig.update_layout(
-                title="NPV Scenario Analysis",
-                xaxis_title="",
-                yaxis_title="NPV (€)",
+                title="NPV Sensitivity Analysis",
+                xaxis_title="Loan Interest Rate",
+                yaxis_title="Property Growth Rate",
                 template="plotly_dark",
-                showlegend=False,
                 height=400,
-                margin=dict(l=60, r=60, t=60, b=40)
+                margin=dict(l=80, r=80, t=60, b=60)
             )
             
             return fig
             
         except Exception as e:
-            print(f"Error creating NPV football field: {e}")
+            print(f"Error creating NPV sensitivity heatmap: {e}")
             return None

@@ -92,8 +92,6 @@ class TransactionCalculator:
              yearly_furn_amort = self.params.furnishing_costs / self.params.lmnp_amortization_furnishing_years
         results["yearly_furnishing_amortization"] = yearly_furn_amort
 
-        # TODO: Add amortization basis for initial_renovation_costs if needed
-
         return results
 
 # --- Example Usage (for testing/debugging) ---

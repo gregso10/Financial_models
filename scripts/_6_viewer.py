@@ -47,9 +47,14 @@ class ModelViewer:
         inputs["loan_insurance_rate"] = st.sidebar.slider("Loan Insurance Rate (%)", 0.0, 0.01, value=defaults.loan_insurance_rate, step=0.0005, format="%.4f")
 
         # --- Rental Assumptions ---
+        # --- Rental Assumptions ---
         st.sidebar.subheader("Rental Assumptions")
-        lease_type_choice = st.sidebar.selectbox("Select Lease Type for Simulation", list(defaults.rental_assumptions.keys()))
-        inputs["lease_type_choice"] = lease_type_choice 
+        # Trigger a rerun when lease type changes to update fiscal options immediately
+        lease_type_choice = st.sidebar.selectbox(
+            "Select Lease Type for Simulation", list(defaults.rental_assumptions.keys()),
+            key="lease_type_selector"
+        )
+        inputs["lease_type_choice"] = lease_type_choice
         inputs["rental_assumptions"] = defaults.rental_assumptions.copy() 
 
         if lease_type_choice == "airbnb":
@@ -70,11 +75,23 @@ class ModelViewer:
         inputs["management_fees_percentage_rent"] = defaults.management_fees_percentage_rent 
         inputs["expenses_growth_rate"] = st.sidebar.slider("Annual Expenses Growth Rate", 0.0, 0.05, value=defaults.expenses_growth_rate, step=0.001, format="%.3f")
 
-        # --- Fiscal Parameters ---
-        st.sidebar.subheader("Fiscal Parameters")
-        inputs["fiscal_regime"] = st.sidebar.selectbox("Fiscal Regime", ["LMNP Réel"], index=0) 
+        # # --- Fiscal Parameters ---
+        # st.sidebar.subheader("Fiscal Parameters")
+        # inputs["fiscal_regime"] = st.sidebar.selectbox("Fiscal Regime", ["LMNP Réel"], index=0) 
+        # inputs["personal_income_tax_bracket"] = st.sidebar.slider("Income Tax Bracket (TMI)", 0.0, 0.45, value=defaults.personal_income_tax_bracket, step=0.01)
+        # inputs["social_contributions_rate"] = st.sidebar.slider("Social Contributions Rate", 0.0, 0.20, value=defaults.social_contributions_rate, step=0.001, format="%.3f")
+
+        # --- Fiscal Parameters (Dynamic) ---     
+        # Define valid regimes based on lease type
+        if lease_type_choice == "unfurnished_3yr":
+            valid_regimes = ["Revenu Foncier Réel", "Micro-Foncier"]
+        else:
+            # Furnished (Airbnb / 1yr)
+            valid_regimes = ["LMNP Réel", "Micro-BIC"]
+        
+        # Let user choose from valid options only
+        inputs["fiscal_regime"] = st.sidebar.selectbox("Fiscal Regime", valid_regimes, index=0)
         inputs["personal_income_tax_bracket"] = st.sidebar.slider("Income Tax Bracket (TMI)", 0.0, 0.45, value=defaults.personal_income_tax_bracket, step=0.01)
-        inputs["social_contributions_rate"] = st.sidebar.slider("Social Contributions Rate", 0.0, 0.20, value=defaults.social_contributions_rate, step=0.001, format="%.3f")
 
         # --- Exit Parameters ---
         st.sidebar.subheader("Exit Strategy")
@@ -315,30 +332,15 @@ class ModelViewer:
         
         with col_sens2:
             st.markdown("**NPV Range Analysis**")
-            st.caption("Worst (low rent, high cost) / Base / Best (high rent, low cost)")
+            st.caption("Varying property value growth rate and loan interest rate")
             
             with st.spinner("Calculating NPV range..."):
-                npv_football = self.visualizer.create_npv_football_field(params, model)
-                
-                if npv_football:
-                    st.plotly_chart(npv_football, use_container_width=True)
-                    
-                    # Show assumptions
-                    with st.expander("📋 Range Assumptions"):
-                        st.markdown("""
-                        **Worst Case:**
-                        - Rent levels: -5%
-                        - Loan interest: +1.0%
-                        
-                        **Base Case:**
-                        - Current model assumptions
-                        
-                        **Best Case:**
-                        - Rent levels: +5%
-                        - Loan interest: -0.5%
-                        """)
+                npv_heatmap = self.visualizer.create_npv_sensitivity_heatmap(params)
+            
+                if npv_heatmap:
+                    st.plotly_chart(npv_heatmap, use_container_width=True)
                 else:
-                    st.warning("Could not generate NPV range")
+                    st.warning("Could not calculate npv sensitivity")
 
     def display_pnl_page(self):
         """P&L statement page"""
