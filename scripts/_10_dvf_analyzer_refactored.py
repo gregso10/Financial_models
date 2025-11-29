@@ -364,19 +364,45 @@ class DVFAnalyzer:
         """Close database connection."""
         self.conn.close()
 
+def run_geocoding_only():
+    # 1. Initialize analyzer pointing to your existing DB
+    db_path = "../dvf_processed.db"  # Ensure this path is correct
+    print(f"🔌 Connecting to {db_path}...")
+    
+    analyzer = DVFAnalyzer(db_path=db_path)
+    
+    # 2. Safety Check: Ensure the aggregation table exists
+    # Geocoding relies on 'mutations_agg'. If missing, we must generate it from raw data.
+    try:
+        analyzer.conn.execute("SELECT 1 FROM mutations_agg LIMIT 1")
+        print("✅ Found 'mutations_agg' table. Proceeding to geocode.")
+    except sqlite3.OperationalError:
+        print("⚠️ 'mutations_agg' table not found. Running aggregation first...")
+        analyzer.aggregate_mutations()
+
+    # 3. Run Smart Batch Geocoding
+    # Adjust batch_size based on your internet stability (1000-5000 is usually safe)
+    analyzer.geocode_smart_batched(batch_size=5000)
+    
+    # 4. (Optional) Export result to Parquet immediately after
+    # analyzer.export_to_parquet("dvf_final_parquet")
+    
+    analyzer.close()
+    print("🎉 Geocoding complete.")
 
 # === USAGE ===
 if __name__ == "__main__":
-    analyzer = DVFAnalyzer()
+    # analyzer = DVFAnalyzer()
     
-    # Full pipeline (memory efficient)
-    analyzer.load_and_process_incremental(chunksize=50000)  # Adjust based on RAM
-    analyzer.aggregate_mutations()
-    analyzer.geocode_smart_batched(batch_size=5000)  # Smaller batches
-    analyzer.export_to_parquet("dvf_parquet")
+    # # Full pipeline (memory efficient)
+    # analyzer.load_and_process_incremental(chunksize=50000)  # Adjust based on RAM
+    # analyzer.aggregate_mutations()
+    # analyzer.geocode_smart_batched(batch_size=5000)  # Smaller batches
+    # analyzer.export_to_parquet("dvf_parquet")
     
-    # Visualize Paris 2024
-    df_viz = analyzer.load_for_analysis(year=2024, city="Paris", max_rows=50000)
-    analyzer.create_3d_visualization(df_viz, "paris_2024.html")
+    # # Visualize Paris 2024
+    # # df_viz = analyzer.load_for_analysis(year=2024, city="Paris", max_rows=50000)
+    # # analyzer.create_3d_visualization(df_viz, "paris_2024.html")
     
-    analyzer.close()
+    # analyzer.close()
+    run_geocoding_only()

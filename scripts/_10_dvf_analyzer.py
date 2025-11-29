@@ -426,6 +426,58 @@ class DVFAnalyzer:
         
         return self
 
+def get_paris_data(self, limit: int = 50000) -> pd.DataFrame:
+    """Get Paris transactions with prix_m2 for visualization."""
+    query = """
+    SELECT 
+        id_mutation, valeur_fonciere, surface_totale, prix_m2,
+        latitude, longitude, adresse_complete, type_local, mutation_year
+    FROM mutations_geocoded
+    WHERE latitude IS NOT NULL 
+      AND longitude BETWEEN 2.22 AND 2.47
+      AND latitude BETWEEN 48.80 AND 48.92
+      AND prix_m2 > 0 AND prix_m2 < 30000
+    ORDER BY mutation_year DESC
+    LIMIT ?
+    """
+    return pd.read_sql_query(query, self.dvf_conn, params=(limit,))
+
+def create_paris_3d_map(self, df: pd.DataFrame = None) -> dict:
+    """Create PyDeck map config for Streamlit."""
+    import numpy as np
+    
+    if df is None:
+        df = self.get_paris_data()
+    
+    if len(df) == 0:
+        return None
+    
+    # Normalize prix_m2 for color (0-1 scale using log)
+    df = df.copy()
+    log_prices = np.log1p(df['prix_m2'])
+    df['normalized'] = (log_prices - log_prices.min()) / (log_prices.max() - log_prices.min())
+    
+    # Blue->Cyan->Green->Yellow->Red gradient
+    def get_color(v):
+        v = max(0, min(1, v))
+        if v < 0.25: return [0, int(v*4*255), 255, 180]
+        elif v < 0.5: return [0, 255, int(255-(v-0.25)*4*255), 180]
+        elif v < 0.75: return [int((v-0.5)*4*255), 255, 0, 180]
+        else: return [255, int(255-(v-0.75)*4*255), 0, 180]
+    
+    df['color'] = df['normalized'].apply(get_color)
+    
+    return {
+        'data': df,
+        'view_state': {
+            'latitude': 48.8566,
+            'longitude': 2.3522,
+            'zoom': 11,
+            'pitch': 50,
+            'bearing': 0
+        }
+    }
+
 
 # Example usage
 if __name__ == "__main__":

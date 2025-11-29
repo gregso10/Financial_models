@@ -476,112 +476,185 @@ class ModelViewer:
             cf_formatted = self.format_financial_table(cf_pivoted, expense_rows, label_map)
             st.dataframe(self.style_financial_dataframe(cf_formatted), use_container_width=True, height=700)
 
+    # def display_dvf_page(self):
+    #     """Market analysis page using DVF data"""
+    #     st.header("🗺️ Market Analysis (DVF)")
+        
+    #     st.markdown("""
+    #     Analyze real estate transactions in France using official DVF (Demandes de Valeurs Foncières) data.
+    #     Data is automatically loaded from all `.txt` files in the `data/` folder.
+    #     """)
+        
+    #     # Initialize analyzer in session state
+    #     if 'dvf_analyzer' not in st.session_state:
+    #         st.session_state.dvf_analyzer = None
+        
+    #     # Run analysis button
+    #     if st.button("🚀 Run DVF Analysis", type="primary"):
+    #         try:
+    #             from ._10_dvf_analyzer import DVFAnalyzer
+                
+    #             with st.spinner("Running DVF analysis pipeline..."):
+    #                 # Auto-loads from data/ directory
+    #                 analyzer = DVFAnalyzer()
+    #                 analyzer.run_full_pipeline()
+    #                 st.session_state.dvf_analyzer = analyzer
+                
+    #             st.success("✅ Analysis complete!")
+                
+    #         except FileNotFoundError as e:
+    #             st.error(f"❌ {e}")
+    #             st.info("💡 Place DVF `.txt` files in the `data/` folder and try again.")
+    #             return
+    #         except Exception as e:
+    #             st.error(f"Error during analysis: {e}")
+    #             st.exception(e)
+    #             return
+        
+    #     # Display results if available
+    #     analyzer = st.session_state.dvf_analyzer
+        
+    #     if analyzer is not None and analyzer.geocoded_data is not None:
+    #         # Display summary stats
+    #         st.subheader("📊 Market Summary")
+    #         stats = analyzer.get_summary_stats()
+            
+    #         col1, col2, col3, col4 = st.columns(4)
+    #         with col1:
+    #             st.metric("Total Transactions", f"{stats['total_transactions']:,}")
+    #         with col2:
+    #             st.metric("Median Price", f"€{stats['median_price']:,.0f}")
+    #         with col3:
+    #             st.metric("Mean Price", f"€{stats['mean_price']:,.0f}")
+    #         with col4:
+    #             st.metric("Total Volume", f"€{stats['total_volume']/1e9:.2f}B")
+            
+    #         # Price distribution
+    #         col_a, col_b = st.columns(2)
+    #         with col_a:
+    #             st.metric("Min Price", f"€{stats['min_price']:,.0f}")
+    #         with col_b:
+    #             st.metric("Max Price", f"€{stats['max_price']:,.0f}")
+            
+    #         st.markdown("---")
+            
+    #         # 3D Map
+    #         st.subheader("🏙️ 3D Price Heatmap")
+    #         st.markdown("""
+    #         **Height** = Property value | **Color** = Blue (low) → Red (high)
+            
+    #         💡 Rotate: Click + drag | Zoom: Scroll | Tilt: Right-click + drag
+    #         """)
+            
+    #         # Create PyDeck map
+    #         deck = analyzer.create_3d_map()
+    #         st.pydeck_chart(deck)
+            
+    #         # Data table
+    #         with st.expander("📋 View Transaction Data (Top 100)"):
+    #             display_cols = ['adresse_complete', 'valeur_fonciere', 'surface_totale']
+    #             available_cols = [c for c in display_cols if c in analyzer.geocoded_data.columns]
+                
+    #             display_df = analyzer.geocoded_data[available_cols].head(100).copy()
+    #             display_df['valeur_fonciere'] = display_df['valeur_fonciere'].apply(lambda x: f"€{x:,.0f}")
+    #             display_df['surface_totale'] = display_df['surface_totale'].apply(lambda x: f"{x:.1f} m²")
+    #             display_df.columns = ['Address', 'Price', 'Surface']
+                
+    #             st.dataframe(display_df, use_container_width=True, height=400)
+            
+    #         # Files loaded info
+    #         with st.expander("📁 Data Sources"):
+    #             st.write(f"Loaded {len(analyzer.txt_files)} file(s):")
+    #             for f in analyzer.txt_files:
+    #                 import os
+    #                 st.write(f"  • {os.path.basename(f)}")
+        
+    #     else:
+    #         st.info("👆 Click 'Run DVF Analysis' to begin")
+            
+    #         # Instructions
+    #         with st.expander("ℹ️ How to set up DVF data"):
+    #             st.markdown("""
+    #             1. Visit [data.gouv.fr DVF dataset](https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/)
+    #             2. Download semester files (e.g., `ValeursFoncieres-2025-S1.txt`, `ValeursFoncieres-2024-S2.txt`)
+    #             3. Place all `.txt` files in the `data/` folder
+    #             4. Click 'Run DVF Analysis' above
+                
+    #             **The analyzer will automatically load and combine all files.**
+    #             """)
+
     def display_dvf_page(self):
-        """Market analysis page using DVF data"""
-        st.header("🗺️ Market Analysis (DVF)")
+        """Paris 3D price map from DVF database."""
+        st.header("🗺️ Paris Real Estate Prices (€/m²)")
         
-        st.markdown("""
-        Analyze real estate transactions in France using official DVF (Demandes de Valeurs Foncières) data.
-        Data is automatically loaded from all `.txt` files in the `data/` folder.
-        """)
+        import pydeck as pdk
+        from ._10_dvf_analyzer_local import DVFAnalyzer
         
-        # Initialize analyzer in session state
-        if 'dvf_analyzer' not in st.session_state:
-            st.session_state.dvf_analyzer = None
+        # Load data
+        @st.cache_data(ttl=3600)
+        def load_paris_data():
+            analyzer = DVFAnalyzer()
+            return analyzer.get_paris_data(limit=30000)
         
-        # Run analysis button
-        if st.button("🚀 Run DVF Analysis", type="primary"):
-            try:
-                from ._10_dvf_analyzer import DVFAnalyzer
-                
-                with st.spinner("Running DVF analysis pipeline..."):
-                    # Auto-loads from data/ directory
-                    analyzer = DVFAnalyzer()
-                    analyzer.run_full_pipeline()
-                    st.session_state.dvf_analyzer = analyzer
-                
-                st.success("✅ Analysis complete!")
-                
-            except FileNotFoundError as e:
-                st.error(f"❌ {e}")
-                st.info("💡 Place DVF `.txt` files in the `data/` folder and try again.")
-                return
-            except Exception as e:
-                st.error(f"Error during analysis: {e}")
-                st.exception(e)
-                return
-        
-        # Display results if available
-        analyzer = st.session_state.dvf_analyzer
-        
-        if analyzer is not None and analyzer.geocoded_data is not None:
-            # Display summary stats
-            st.subheader("📊 Market Summary")
-            stats = analyzer.get_summary_stats()
+        try:
+            df = load_paris_data()
             
+            if len(df) == 0:
+                st.warning("No Paris data found. Run geocoding first.")
+                return
+            
+            # Stats
             col1, col2, col3, col4 = st.columns(4)
-            with col1:
-                st.metric("Total Transactions", f"{stats['total_transactions']:,}")
-            with col2:
-                st.metric("Median Price", f"€{stats['median_price']:,.0f}")
-            with col3:
-                st.metric("Mean Price", f"€{stats['mean_price']:,.0f}")
-            with col4:
-                st.metric("Total Volume", f"€{stats['total_volume']/1e9:.2f}B")
+            col1.metric("Transactions", f"{len(df):,}")
+            col2.metric("Median €/m²", f"€{df['prix_m2'].median():,.0f}")
+            col3.metric("Mean €/m²", f"€{df['prix_m2'].mean():,.0f}")
+            col4.metric("Max €/m²", f"€{df['prix_m2'].max():,.0f}")
             
-            # Price distribution
-            col_a, col_b = st.columns(2)
-            with col_a:
-                st.metric("Min Price", f"€{stats['min_price']:,.0f}")
-            with col_b:
-                st.metric("Max Price", f"€{stats['max_price']:,.0f}")
+            # Prepare visualization data
+            import numpy as np
+            df = df.copy()
+            log_prices = np.log1p(df['prix_m2'])
+            df['normalized'] = (log_prices - log_prices.min()) / (log_prices.max() - log_prices.min())
             
-            st.markdown("---")
+            def get_color(v):
+                v = max(0, min(1, v))
+                if v < 0.25: return [0, int(v*4*255), 255, 180]
+                elif v < 0.5: return [0, 255, int(255-(v-0.25)*4*255), 180]
+                elif v < 0.75: return [int((v-0.5)*4*255), 255, 0, 180]
+                return [255, int(255-(v-0.75)*4*255), 0, 180]
             
-            # 3D Map
-            st.subheader("🏙️ 3D Price Heatmap")
-            st.markdown("""
-            **Height** = Property value | **Color** = Blue (low) → Red (high)
+            df['color'] = df['normalized'].apply(get_color)
             
-            💡 Rotate: Click + drag | Zoom: Scroll | Tilt: Right-click + drag
-            """)
+            # PyDeck 3D map
+            layer = pdk.Layer(
+                "ColumnLayer",
+                data=df,
+                get_position=["longitude", "latitude"],
+                get_elevation="prix_m2",
+                elevation_scale=0.5,
+                radius=30,
+                get_fill_color="color",
+                pickable=True,
+                extruded=True,
+            )
             
-            # Create PyDeck map
-            deck = analyzer.create_3d_map()
-            st.pydeck_chart(deck)
+            view = pdk.ViewState(
+                latitude=48.8566, longitude=2.3522,
+                zoom=11, pitch=50, bearing=0
+            )
             
-            # Data table
-            with st.expander("📋 View Transaction Data (Top 100)"):
-                display_cols = ['adresse_complete', 'valeur_fonciere', 'surface_totale']
-                available_cols = [c for c in display_cols if c in analyzer.geocoded_data.columns]
-                
-                display_df = analyzer.geocoded_data[available_cols].head(100).copy()
-                display_df['valeur_fonciere'] = display_df['valeur_fonciere'].apply(lambda x: f"€{x:,.0f}")
-                display_df['surface_totale'] = display_df['surface_totale'].apply(lambda x: f"{x:.1f} m²")
-                display_df.columns = ['Address', 'Price', 'Surface']
-                
-                st.dataframe(display_df, use_container_width=True, height=400)
+            deck = pdk.Deck(
+                layers=[layer],
+                initial_view_state=view,
+                map_style="mapbox://styles/mapbox/dark-v10",
+                tooltip={"html": "<b>€{prix_m2:.0f}/m²</b><br>{adresse_complete}"}
+            )
             
-            # Files loaded info
-            with st.expander("📁 Data Sources"):
-                st.write(f"Loaded {len(analyzer.txt_files)} file(s):")
-                for f in analyzer.txt_files:
-                    import os
-                    st.write(f"  • {os.path.basename(f)}")
-        
-        else:
-            st.info("👆 Click 'Run DVF Analysis' to begin")
+            st.pydeck_chart(deck, use_container_width=True)
             
-            # Instructions
-            with st.expander("ℹ️ How to set up DVF data"):
-                st.markdown("""
-                1. Visit [data.gouv.fr DVF dataset](https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/)
-                2. Download semester files (e.g., `ValeursFoncieres-2025-S1.txt`, `ValeursFoncieres-2024-S2.txt`)
-                3. Place all `.txt` files in the `data/` folder
-                4. Click 'Run DVF Analysis' above
-                
-                **The analyzer will automatically load and combine all files.**
-                """)
+        except Exception as e:
+            st.error(f"Error: {e}")
+            st.info("Ensure DVF database exists at data/dvf_fresh_local.db")
 
     def run(self):
         """Main app orchestrator"""
