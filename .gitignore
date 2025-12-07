@@ -1,3 +1,9 @@
 data/
 dvf_processed.db
 real_estate/lib/
+notebooks/
+ban_data/
+
+*.html
+.python-version
+250gles_impots.txt
