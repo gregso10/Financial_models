@@ -3,6 +3,7 @@ dvf_processed.db
 real_estate/lib/
 notebooks/
 ban_data/
+real_estate/
 
 *.html
 .python-version
