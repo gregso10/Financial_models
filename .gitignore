@@ -4,6 +4,7 @@ real_estate/lib/
 notebooks/
 ban_data/
 real_estate/
+.vscode/
 
 *.html
 .python-version
