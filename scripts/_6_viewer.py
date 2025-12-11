@@ -48,9 +48,7 @@ class ModelViewer:
         inputs["loan_insurance_rate"] = st.sidebar.slider("Loan Insurance Rate (%)", 0.0, 0.01, value=defaults.loan_insurance_rate, step=0.0005, format="%.4f")
 
         # --- Rental Assumptions ---
-        # --- Rental Assumptions ---
         st.sidebar.subheader("Rental Assumptions")
-        # Trigger a rerun when lease type changes to update fiscal options immediately
         lease_type_choice = st.sidebar.selectbox(
             "Select Lease Type for Simulation", list(defaults.rental_assumptions.keys()),
             key="lease_type_selector"
@@ -76,21 +74,12 @@ class ModelViewer:
         inputs["management_fees_percentage_rent"] = defaults.management_fees_percentage_rent 
         inputs["expenses_growth_rate"] = st.sidebar.slider("Annual Expenses Growth Rate", 0.0, 0.05, value=defaults.expenses_growth_rate, step=0.001, format="%.3f")
 
-        # # --- Fiscal Parameters ---
-        # st.sidebar.subheader("Fiscal Parameters")
-        # inputs["fiscal_regime"] = st.sidebar.selectbox("Fiscal Regime", ["LMNP Réel"], index=0) 
-        # inputs["personal_income_tax_bracket"] = st.sidebar.slider("Income Tax Bracket (TMI)", 0.0, 0.45, value=defaults.personal_income_tax_bracket, step=0.01)
-        # inputs["social_contributions_rate"] = st.sidebar.slider("Social Contributions Rate", 0.0, 0.20, value=defaults.social_contributions_rate, step=0.001, format="%.3f")
-
         # --- Fiscal Parameters (Dynamic) ---     
-        # Define valid regimes based on lease type
         if lease_type_choice == "unfurnished_3yr":
             valid_regimes = ["Revenu Foncier Réel", "Micro-Foncier"]
         else:
-            # Furnished (Airbnb / 1yr)
             valid_regimes = ["LMNP Réel", "Micro-BIC"]
         
-        # Let user choose from valid options only
         inputs["fiscal_regime"] = st.sidebar.selectbox("Fiscal Regime", valid_regimes, index=0)
         inputs["personal_income_tax_bracket"] = st.sidebar.slider("Income Tax Bracket (TMI)", 0.0, 0.45, value=defaults.personal_income_tax_bracket, step=0.01)
 
@@ -109,17 +98,11 @@ class ModelViewer:
 
     def format_financial_table(self, df: pd.DataFrame, expense_rows: list, label_map: dict) -> pd.DataFrame:
         """Common formatting for financial statements"""
-        # Flip expense signs
         rows_to_flip = df.index.intersection(expense_rows)
         df.loc[rows_to_flip] *= -1
-        
-        # Convert to thousands
         df_k = df / 1000.0
         df_k.index.name = "(in €k)"
-        
-        # Apply label mapping
         df_k.index = df_k.index.map(lambda x: label_map.get(x, x))
-        
         return df_k
 
     def style_financial_dataframe(self, df: pd.DataFrame):
@@ -136,10 +119,8 @@ class ModelViewer:
         def style_financial_rows(row):
             row_name_clean = row.name.strip()
             styles = [''] * len(row)
-            
             if 'Total' in row_name_clean or 'Net' in row_name_clean:
                 styles = ['font-weight: bold'] * len(row)
-            
             separator_rows = [
                 "Gross Operating Income", "Total Operating Expenses", 
                 "Net Operating Income", "Taxable Income", "Total Taxes", 
@@ -148,7 +129,6 @@ class ModelViewer:
             ]
             if row_name_clean in separator_rows:
                 styles = [s + '; border-top: 1px solid #4b5563' for s in styles]
-            
             if row_name_clean == 'Net Income':
                 styles = ['background-color: lightgrey; font-weight: bold; color: black; border-top: 2px solid white;'] * len(row)
             return styles
@@ -158,7 +138,6 @@ class ModelViewer:
             style = 'text-align: left; padding-left: 5px; '
             if 'Total' in label_clean or 'Net' in label_clean:
                 style += 'font-weight: bold; '
-            
             separator_rows = [
                 "Gross Operating Income", "Total Operating Expenses", 
                 "Net Operating Income", "Taxable Income", "Total Taxes", 
@@ -167,7 +146,6 @@ class ModelViewer:
             ]
             if label_clean in separator_rows:
                 style += 'border-top: 1px solid #4b5563; '
-            
             if label_clean == 'Net Income':
                 style = 'background-color: lightgrey !important; font-weight: bold !important; color: black !important; border-top: 2px solid white !important; text-align: left !important; padding-left: 5px !important;'
             return style
@@ -202,54 +180,30 @@ class ModelViewer:
         # === ROW 1: KEY INVESTMENT METRICS ===
         if metrics:
             st.subheader("🎯 Investment Performance Metrics")
-            
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             
             with col_m1:
                 irr_value = metrics.get('irr', 0) * 100
-                st.metric(
-                    "IRR", 
-                    f"{irr_value:.2f}%",
-                    help="Internal Rate of Return - annualized return on equity investment"
-                )
-            
+                st.metric("IRR", f"{irr_value:.2f}%", help="Internal Rate of Return - annualized return on equity investment")
             with col_m2:
                 npv_value = metrics.get('npv', 0) / 1000
                 discount_rate = getattr(params, 'discount_rate', 0.05) * 100
-                st.metric(
-                    "NPV", 
-                    f"€{npv_value:.1f}k",
-                    help=f"Net Present Value at {discount_rate:.1f}% discount rate"
-                )
-            
+                st.metric("NPV", f"€{npv_value:.1f}k", help=f"Net Present Value at {discount_rate:.1f}% discount rate")
             with col_m3:
                 coc_value = metrics.get('cash_on_cash', 0) * 100
-                st.metric(
-                    "Cash-on-Cash (Y1)", 
-                    f"{coc_value:.2f}%",
-                    help="Year 1 cash flow divided by initial equity invested"
-                )
-            
+                st.metric("Cash-on-Cash (Y1)", f"{coc_value:.2f}%", help="Year 1 cash flow divided by initial equity invested")
             with col_m4:
                 em_value = metrics.get('equity_multiple', 0)
-                st.metric(
-                    "Equity Multiple", 
-                    f"{em_value:.2f}x",
-                    help="Total cash returned divided by initial equity"
-                )
+                st.metric("Equity Multiple", f"{em_value:.2f}x", help="Total cash returned divided by initial equity")
             
-            # Exit details in expander
             with st.expander("📤 Exit Scenario Details"):
                 col_e1, col_e2, col_e3 = st.columns(3)
-                
                 with col_e1:
                     st.metric("Exit Property Value", f"€{metrics.get('exit_property_value', 0)/1000:.1f}k")
                     st.metric("Capital Gain", f"€{metrics.get('capital_gain', 0)/1000:.1f}k")
-                
                 with col_e2:
                     st.metric("Selling Costs", f"€{metrics.get('selling_costs', 0)/1000:.1f}k")
                     st.metric("Capital Gains Tax", f"€{metrics.get('capital_gains_tax', 0)/1000:.1f}k")
-                
                 with col_e3:
                     st.metric("Remaining Loan", f"€{metrics.get('remaining_loan_balance', 0)/1000:.1f}k")
                     st.metric("Net Exit Proceeds", f"€{metrics.get('net_exit_proceeds', 0)/1000:.1f}k")
@@ -281,25 +235,19 @@ class ModelViewer:
         # === ROW 3: LOAN ANALYSIS ===
         if loan_schedule is not None and len(loan_schedule) > 0:
             st.subheader("📋 Loan Analysis")
-            
             col_loan1, col_loan2 = st.columns([1, 1])
             
             with col_loan1:
                 st.markdown("**Amortization Schedule (Yearly)**")
                 loan_table = self.visualizer.format_loan_schedule_table(loan_schedule)
                 if loan_table is not None:
-                    st.dataframe(
-                        loan_table.style.format("{:,.1f}"),
-                        use_container_width=True,
-                        height=400
-                    )
+                    st.dataframe(loan_table.style.format("{:,.1f}"), use_container_width=True, height=400)
             
             with col_loan2:
                 loan_chart = self.visualizer.create_loan_balance_chart(loan_schedule)
                 if loan_chart:
                     st.plotly_chart(loan_chart, use_container_width=True)
             
-            # Loan sensitivity
             st.markdown("**Payment Sensitivity Analysis**")
             sensitivity_heatmap = self.visualizer.create_loan_sensitivity_heatmap(params)
             if sensitivity_heatmap:
@@ -322,10 +270,8 @@ class ModelViewer:
         with col_sens1:
             st.markdown("**IRR Sensitivity Heatmap**")
             st.caption("Varying property value growth rate and loan interest rate")
-            
             with st.spinner("Calculating IRR sensitivity... (this may take a moment)"):
                 irr_heatmap = self.visualizer.create_irr_sensitivity_heatmap(params)
-                
                 if irr_heatmap:
                     st.plotly_chart(irr_heatmap, use_container_width=True)
                 else:
@@ -334,10 +280,8 @@ class ModelViewer:
         with col_sens2:
             st.markdown("**NPV Range Analysis**")
             st.caption("Varying property value growth rate and loan interest rate")
-            
             with st.spinner("Calculating NPV range..."):
                 npv_heatmap = self.visualizer.create_npv_sensitivity_heatmap(params)
-            
                 if npv_heatmap:
                     st.plotly_chart(npv_heatmap, use_container_width=True)
                 else:
@@ -355,7 +299,6 @@ class ModelViewer:
         params = st.session_state.params
         
         if pnl is not None:
-            # Yearly summary
             pnl_yearly = pnl.groupby("Year").sum()
             pnl_pivoted = pnl_yearly.T
             pnl_pivoted.columns = [f"Year {col}" for col in pnl_pivoted.columns]
@@ -392,13 +335,11 @@ class ModelViewer:
             pnl_formatted = self.format_financial_table(pnl_pivoted, expense_rows, label_map)
             st.dataframe(self.style_financial_dataframe(pnl_formatted), use_container_width=True, height=700)
             
-            # Charts below
             col1, col2 = st.columns(2)
             with col1:
                 cumulative_chart = self.visualizer.create_pnl_cumulative_chart(pnl)
                 if cumulative_chart:
                     st.plotly_chart(cumulative_chart, use_container_width=True)
-            
             with col2:
                 sankey_y1 = self.visualizer.create_pnl_sankey(pnl)
                 if sankey_y1:
@@ -417,18 +358,12 @@ class ModelViewer:
         params = st.session_state.params
         
         if bs is not None:
-            # Get key months: 0, 12, 24, ...
             key_months = [0] + [12 * y for y in range(1, params.holding_period_years + 1)]
             bs_yearly = bs.loc[key_months]
-            
-            # Transpose
             bs_pivoted = bs_yearly.T
             bs_pivoted.columns = ["Initial"] + [f"Year {i}" for i in range(1, params.holding_period_years + 1)]
-            
-            # Convert to k€
             bs_pivoted_k = bs_pivoted / 1000.0
             bs_pivoted_k.index.name = "(in €k)"
-            
             st.dataframe(self.style_financial_dataframe(bs_pivoted_k), use_container_width=True, height=700)
 
     def display_cf_page(self):
@@ -443,10 +378,8 @@ class ModelViewer:
         params = st.session_state.params
         
         if cf is not None:
-            # Yearly summary
             cf_yearly = cf.groupby("Year").sum()
             
-            # Handle Beginning/Ending Cash specially
             for year in range(1, params.holding_period_years + 1):
                 year_data = cf[cf["Year"] == year]
                 cf_yearly.loc[year, "Beginning Cash Balance"] = year_data["Beginning Cash Balance"].iloc[0]
@@ -455,9 +388,7 @@ class ModelViewer:
             cf_pivoted = cf_yearly.T
             cf_pivoted.columns = [f"Year {col}" for col in cf_pivoted.columns]
             
-            expense_rows = [
-                "Loan Principal Repayment", "Acquisition Costs Outflow"
-            ]
+            expense_rows = ["Loan Principal Repayment", "Acquisition Costs Outflow"]
             
             label_map = {
                 "Net Income": "Net Income",
@@ -484,7 +415,6 @@ class ModelViewer:
         import pydeck as pdk
         from ._10_dvf_analyzer_local import DVFAnalyzer
         
-        # Load data
         @st.cache_data(ttl=3600)
         def load_paris_data():
             analyzer = DVFAnalyzer()
@@ -497,14 +427,12 @@ class ModelViewer:
                 st.warning("No Paris data found. Run geocoding first.")
                 return
             
-            # Stats
             col1, col2, col3, col4 = st.columns(4)
             col1.metric("Transactions", f"{len(df):,}")
             col2.metric("Median €/m²", f"€{df['prix_m2'].median():,.0f}")
             col3.metric("Mean €/m²", f"€{df['prix_m2'].mean():,.0f}")
             col4.metric("Max €/m²", f"€{df['prix_m2'].max():,.0f}")
             
-            # Prepare visualization data
             import numpy as np
             df = df.copy()
             log_prices = np.log1p(df['prix_m2'])
@@ -519,7 +447,6 @@ class ModelViewer:
             
             df['color'] = df['normalized'].apply(get_color)
             
-            # PyDeck 3D map
             layer = pdk.Layer(
                 "ColumnLayer",
                 data=df,
@@ -593,22 +520,23 @@ class ModelViewer:
                     st.session_state.model = model
                     st.session_state.params = current_params
                     st.sidebar.success("✅ Simulation complete!")
-                    if st.session_state.model is not None:
-                        st.sidebar.markdown("---")
-                        st.sidebar.subheader("📥 Export")
-                        
-                        excel_data = self.export_to_excel()
-                        if excel_data:
-                            st.sidebar.download_button(
-                                label="📊 Download Excel Model",
-                                data=excel_data,
-                                file_name="financial_model.xlsx",
-                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.xml"
-                            )
-                            
                 except Exception as e:
                     st.error(f"Simulation error: {e}")
                     st.exception(e)
+        
+        # Excel Export Button (after simulation)
+        if st.session_state.model is not None:
+            st.sidebar.markdown("---")
+            st.sidebar.subheader("📥 Export")
+            
+            excel_data = self.export_to_excel()
+            if excel_data:
+                st.sidebar.download_button(
+                    label="📊 Download Excel Model",
+                    data=excel_data,
+                    file_name="financial_model.xlsx",
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.xml"
+                )
         
         # Navigation
         st.sidebar.markdown("---")
