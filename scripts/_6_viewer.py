@@ -6,6 +6,7 @@ from typing import Dict, Any
 from ._1_model_params import ModelParameters
 from ._0_financial_model import FinancialModel 
 from ._7_data_visualizer import DataVisualizer
+from ._12_excel_exporter import ExcelExporter
 
 st.set_page_config(layout="wide", page_title="Real Estate Financial Model")
 
@@ -549,6 +550,25 @@ class ModelViewer:
             st.error(f"Error: {e}")
             st.info("Ensure DVF database exists at data/dvf_fresh_local.db")
 
+    def export_to_excel(self):
+        """Generate and return Excel file for download."""
+        if st.session_state.model is None:
+            return None
+        
+        model = st.session_state.model
+        params = st.session_state.params
+        
+        exporter = ExcelExporter(
+            params=params,
+            pnl_df=model.get_pnl(),
+            bs_df=model.get_balance_sheet(),
+            cf_df=model.get_cash_flow(),
+            loan_schedule=model.get_loan_schedule(),
+            investment_metrics=model.get_investment_metrics()
+        )
+        
+        return exporter.export()
+    
     def run(self):
         """Main app orchestrator"""
         st.title("🏠 Real Estate Financial Model")
@@ -573,6 +593,19 @@ class ModelViewer:
                     st.session_state.model = model
                     st.session_state.params = current_params
                     st.sidebar.success("✅ Simulation complete!")
+                    if st.session_state.model is not None:
+                        st.sidebar.markdown("---")
+                        st.sidebar.subheader("📥 Export")
+                        
+                        excel_data = self.export_to_excel()
+                        if excel_data:
+                            st.sidebar.download_button(
+                                label="📊 Download Excel Model",
+                                data=excel_data,
+                                file_name="financial_model.xlsx",
+                                mime="application/vnd.openxmlformats-officedocument.spreadsheetml.xml"
+                            )
+                            
                 except Exception as e:
                     st.error(f"Simulation error: {e}")
                     st.exception(e)

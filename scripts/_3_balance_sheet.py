@@ -134,7 +134,7 @@ class BalanceSheet:
             # current_cash = cf_ending_cash - depreciation_month
             current_cash = cf_month_data.get("Ending Cash Balance", 0.0)
             bs_data["Cash"].append(current_cash)
-            
+
             # --- End Cash Update ---
 
             # Liabilities & Equity (Loan Balance, Retained Earnings - same logic as before)
@@ -165,7 +165,7 @@ class BalanceSheet:
 
         # Reorder columns (same as before)
         ordered_cols = [
-            "Year", "Property Cost", "Property Accumulated Depreciation", "Property Net Value",
+            "Property Cost", "Property Accumulated Depreciation", "Property Net Value",
             "Renovation Cost", "Renovation Accumulated Depreciation", "Renovation Net Value",
             "Furnishing Cost", "Furnishing Accumulated Depreciation", "Furnishing Net Value",
             "Total Fixed Assets", "Cash", "Total Assets", "Loan Balance",
