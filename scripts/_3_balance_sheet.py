@@ -31,8 +31,7 @@ class BalanceSheet:
         # These costs represent the value capitalized into the Property asset account.
         notary_fees_calc = getattr(params, 'notary_fees', params.property_price * params.notary_fees_percentage_estimate)
         self._initial_property_cost = (params.property_price +
-                                       notary_fees_calc +
-                                       params.initial_renovation_costs)
+                                       notary_fees_calc)
 
         self._initial_furnishing_cost = params.furnishing_costs
         self._initial_renovation_cost = params.initial_renovation_costs
@@ -73,7 +72,10 @@ class BalanceSheet:
             A pandas DataFrame containing the balanced monthly Balance Sheet statement.
         """
         num_months = self.params.holding_period_years * 12
-        initial_book_equity = self._initial_property_cost + self._initial_furnishing_cost - self._initial_loan_balance
+        initial_book_equity = (self._initial_property_cost + 
+                               self._initial_furnishing_cost + 
+                               self._initial_renovation_cost - 
+                               self._initial_loan_balance)
 
         # Initialize with Month 0 data
         bs_data: Dict[str, List[float]] = {
@@ -127,11 +129,12 @@ class BalanceSheet:
             bs_data["Renovation Accumulated Depreciation"].append(current_reno_acc_dep)
 
             # --- Cash (UPDATED) ---
-            cf_ending_cash = cf_month_data.get("Ending Cash Balance", 0.0)
-            depreciation_month = pnl_month_data.get("Depreciation/Amortization", 0.0)
-            current_cash = cf_ending_cash - depreciation_month
-
+            # cf_ending_cash = cf_month_data.get("Ending Cash Balance", 0.0)
+            # depreciation_month = pnl_month_data.get("Depreciation/Amortization", 0.0)
+            # current_cash = cf_ending_cash - depreciation_month
+            current_cash = cf_month_data.get("Ending Cash Balance", 0.0)
             bs_data["Cash"].append(current_cash)
+            
             # --- End Cash Update ---
 
             # Liabilities & Equity (Loan Balance, Retained Earnings - same logic as before)

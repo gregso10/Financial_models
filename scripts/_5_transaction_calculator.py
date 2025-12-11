@@ -92,21 +92,9 @@ class TransactionCalculator:
              yearly_furn_amort = self.params.furnishing_costs / self.params.lmnp_amortization_furnishing_years
         results["yearly_furnishing_amortization"] = yearly_furn_amort
 
+        yearly_reno_amort = 0.0
+        if self.params.lmnp_amortization_renovation_years > 0 and self.params.initial_renovation_costs > 0:
+            yearly_reno_amort = self.params.initial_renovation_costs / self.params.lmnp_amortization_renovation_years
+        results["yearly_renovation_amortization"] = yearly_reno_amort
+
         return results
-
-# --- Example Usage (for testing/debugging) ---
-# if __name__ == "__main__":
-#     sample_params = ModelParameters(
-#         property_price=200000, agency_fees_percentage=0.05,
-#         notary_fees_percentage_estimate=0.08, initial_renovation_costs=10000,
-#         furnishing_costs=5000, loan_percentage=0.9, loan_interest_rate=0.04,
-#         loan_duration_years=20, loan_insurance_rate=0.003,
-#         lmnp_amortization_property_years=30, lmnp_amortization_furnishing_years=7
-#     )
-
-#     calculator = TransactionCalculator(sample_params)
-#     calculated_values = calculator.calculate_all()
-
-#     print("--- Calculated Transaction Values ---")
-#     for key, value in calculated_values.items():
-#         print(f"{key}: {value:,.2f}")
