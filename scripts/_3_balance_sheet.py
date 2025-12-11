@@ -83,7 +83,7 @@ class BalanceSheet:
             "Furnishing Cost": [self._initial_furnishing_cost],
             "Furnishing Accumulated Depreciation": [0.0],
             "Renovation Cost": [self._initial_renovation_cost],
-            "Renovation Accumulated Depreciation": [0,0],
+            "Renovation Accumulated Depreciation": [0.0],
             "Cash": [0.0],
             "Loan Balance": [self._initial_loan_balance],
             "Initial Equity": [initial_book_equity],
@@ -136,6 +136,7 @@ class BalanceSheet:
 
             # Liabilities & Equity (Loan Balance, Retained Earnings - same logic as before)
             current_loan_balance = 0.0
+            
             if month in loan_schedule.index:
                 current_loan_balance = loan_schedule.loc[month, 'Ending Balance']
 
@@ -151,7 +152,8 @@ class BalanceSheet:
         # Calculate Derived Rows (same as before)
         df_bs["Property Net Value"] = df_bs["Property Cost"] - df_bs["Property Accumulated Depreciation"]
         df_bs["Furnishing Net Value"] = df_bs["Furnishing Cost"] - df_bs["Furnishing Accumulated Depreciation"]
-        df_bs["Total Fixed Assets"] = df_bs["Property Net Value"] + df_bs["Furnishing Net Value"]
+        df_bs["Renovation Net Value"] = df_bs["Renovation Cost"] - df_bs["Renovation Accumulated Depreciation"]
+        df_bs["Total Fixed Assets"] = df_bs["Property Net Value"] + df_bs["Furnishing Net Value"] + df_bs["Renovation Net Value"]
         df_bs["Total Assets"] = df_bs["Total Fixed Assets"] + df_bs["Cash"]
         df_bs["Total Liabilities"] = df_bs["Loan Balance"]
         df_bs["Total Equity"] = df_bs["Initial Equity"] + df_bs["Retained Earnings"]
@@ -161,6 +163,7 @@ class BalanceSheet:
         # Reorder columns (same as before)
         ordered_cols = [
             "Year", "Property Cost", "Property Accumulated Depreciation", "Property Net Value",
+            "Renovation Cost", "Renovation Accumulated Depreciation", "Renovation Net Value",
             "Furnishing Cost", "Furnishing Accumulated Depreciation", "Furnishing Net Value",
             "Total Fixed Assets", "Cash", "Total Assets", "Loan Balance",
             "Total Liabilities", "Initial Equity", "Retained Earnings",
