@@ -35,6 +35,7 @@ class BalanceSheet:
                                        params.initial_renovation_costs)
 
         self._initial_furnishing_cost = params.furnishing_costs
+        self._initial_renovation_cost = params.initial_renovation_costs
 
         # --- Store Initial Liabilities & Equity (T=0 state) ---
         self._initial_loan_balance = self._loan_amount
@@ -43,8 +44,10 @@ class BalanceSheet:
         # --- Pre-calculate monthly depreciation ---
         yearly_prop_amort = getattr(params, 'yearly_property_amortization', 0.0)
         yearly_furn_amort = getattr(params, 'yearly_furnishing_amortization', 0.0)
+        yearly_renovation_amort = getattr(params, 'yearly_renovation_amortization', 0.0)
         self._monthly_property_depreciation = yearly_prop_amort / 12 if yearly_prop_amort > 0 else 0.0
         self._monthly_furnishing_depreciation = yearly_furn_amort / 12 if yearly_furn_amort > 0 else 0.0
+        self._monthly_renovation_depreciation = yearly_renovation_amort / 12 if yearly_renovation_amort > 0 else 0.0
 
         # --- Basic Checks ---
         if self._initial_loan_balance == 0.0 and params.loan_percentage > 0:
@@ -79,6 +82,8 @@ class BalanceSheet:
             "Property Accumulated Depreciation": [0.0],
             "Furnishing Cost": [self._initial_furnishing_cost],
             "Furnishing Accumulated Depreciation": [0.0],
+            "Renovation Cost": [self._initial_renovation_cost],
+            "Renovation Accumulated Depreciation": [0,0],
             "Cash": [0.0],
             "Loan Balance": [self._initial_loan_balance],
             "Initial Equity": [initial_book_equity],
@@ -86,6 +91,7 @@ class BalanceSheet:
         }
 
         # Monthly Loop (Starts from Month 1)
+        # TODO: reprendre la logique de dépréciation avec la rénovation + soucis dans le cash
         for month in range(1, num_months + 1):
             current_year = (month - 1) // 12 + 1
             bs_data["Year"].append(current_year)
@@ -93,6 +99,7 @@ class BalanceSheet:
             # Get previous month's BS data
             prev_prop_acc_dep = bs_data["Property Accumulated Depreciation"][month-1]
             prev_furn_acc_dep = bs_data["Furnishing Accumulated Depreciation"][month-1]
+            prev_reno_acc_dep = bs_data["Renovation Accumulated Depreciation"][month-1]
             prev_loan_balance = bs_data["Loan Balance"][month-1]
             prev_retained_earnings = bs_data["Retained Earnings"][month-1]
             # prev_cash is no longer directly used for calculation, but needed for CF's BegBal
@@ -104,6 +111,7 @@ class BalanceSheet:
             interest_month = pnl_month_data.get("Loan Interest", 0.0)
             prop_dep_month = self._monthly_property_depreciation if current_year <= self.params.lmnp_amortization_property_years else 0.0
             furn_dep_month = self._monthly_furnishing_depreciation if current_year <= self.params.lmnp_amortization_furnishing_years else 0.0
+            reno_dep_month = self._monthly_renovation_depreciation if current_year <= self.params.lmnp_amortization_renovation_years else 0.0
 
             # --- Calculate BS Items for Current Month ---
 
@@ -114,6 +122,9 @@ class BalanceSheet:
             bs_data["Furnishing Cost"].append(self._initial_furnishing_cost)
             current_furn_acc_dep = min(prev_furn_acc_dep + furn_dep_month, self._initial_furnishing_cost)
             bs_data["Furnishing Accumulated Depreciation"].append(current_furn_acc_dep)
+            bs_data["Renovation Cost"].append(self._initial_renovation_cost)
+            current_reno_acc_dep = min(prev_reno_acc_dep + reno_dep_month, self._initial_renovation_cost)
+            bs_data["Renovation Accumulated Depreciation"].append(current_reno_acc_dep)
 
             # --- Cash (UPDATED) ---
             cf_ending_cash = cf_month_data.get("Ending Cash Balance", 0.0)
@@ -159,28 +170,3 @@ class BalanceSheet:
 
         return df_bs
 
-# --- (Example Usage section remains the same) ---
-
-# --- Example Usage ---
-# if __name__ == "__main__":
-#     # (Use the same params and pnl_df setup as in the test fixture)
-#     params = ModelParameters(...)
-#     params._calculate_acquisition_costs()
-#     params._calculate_financing()
-#     params._calculate_amortization_bases()
-
-#     pnl_calculator = PnL(params)
-#     pnl_df = pnl_calculator.generate_pnl_dataframe(lease_type="furnished_1yr")
-
-#     bs_calculator = BalanceSheet(params)
-#     bs_df = bs_calculator.generate_bs_dataframe(pnl_df)
-
-#     print("--- Balance Sheet (Months 0-5) ---")
-#     print(bs_df.head(6))
-
-#     print("\n--- Balance Sheet (Last 5 Months) ---")
-#     print(bs_df.tail(5))
-
-#     # Check Balance Check column for issues
-#     print("\n--- Max Absolute Balance Check Error ---")
-#     print(bs_df["Balance Check"].abs().max())

@@ -34,6 +34,7 @@ class PnL:
         self._loan_amount = getattr(params, 'loan_amount', 0.0)
         self._yearly_property_amortization = getattr(params, 'yearly_property_amortization', 0.0)
         self._yearly_furnishing_amortization = getattr(params, 'yearly_furnishing_amortization', 0.0)
+        self._yearly_renovation_amortization = getattr(params, 'yearly_renovation_amortization', 0.0)
         self._yearly_loan_insurance_cost = getattr(params, 'yearly_loan_insurance_cost', 0.0)
         
         if self._loan_amount == 0.0 and params.loan_percentage > 0:
@@ -175,7 +176,11 @@ class PnL:
             if current_year <= self.params.lmnp_amortization_furnishing_years:
                  furn_amort_month = self._yearly_furnishing_amortization / 12
 
-            depreciation_month = prop_amort_month + furn_amort_month
+            reno_amort_month = 0.0
+            if current_year <= self.params.lmnp_amortization_renovation_years:
+                 reno_amort_month = self._yearly_renovation_amortization / 12
+
+            depreciation_month = prop_amort_month + furn_amort_month + reno_amort_month
             pnl_data["Depreciation/Amortization"].append(depreciation_month)
 
             # --- 5. Taxes (Integration) ---
@@ -213,27 +218,3 @@ class PnL:
             df_pnl = df_pnl.drop(columns=["Vacancy Loss"])
 
         return df_pnl
-
-# --- Example Usage (requires a ModelParameters instance) ---
-# if __name__ == "__main__":
-#     # (Use the same params setup as in the test fixture)
-#     params = ModelParameters(...)
-#     params._calculate_acquisition_costs()
-#     params._calculate_financing()
-#     params._calculate_amortization_bases()
-
-#     pnl_calculator = PnL(params)
-
-#     df_pnl_airbnb = pnl_calculator.generate_pnl_dataframe(lease_type="airbnb")
-#     df_pnl_furn = pnl_calculator.generate_pnl_dataframe(lease_type="furnished_1yr")
-
-#     print("--- Airbnb P&L (First 5 Months) ---")
-#     print(df_pnl_airbnb.head())
-
-#     print("\n--- Furnished P&L (First 5 Months) ---")
-#     print(df_pnl_furn.head())
-
-#     # Example: Yearly summary
-#     yearly_summary = df_pnl_furn.groupby("Year").sum()
-#     print("\n--- Furnished P&L (Yearly Summary) ---")
-#     print(yearly_summary)

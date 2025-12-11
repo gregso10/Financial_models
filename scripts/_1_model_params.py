@@ -69,6 +69,7 @@ class ModelParameters:
     fiscal_regime: str = "LMNP Réel" # Example, could be user choice
     lmnp_amortization_property_years: int = 30
     lmnp_amortization_furnishing_years: int = 7
+    lmnp_amortization_renovation_years: int = 7
     personal_income_tax_bracket: float = 0.30 # TMI
     social_contributions_rate: float = 0.172 # Prélèvements Sociaux
 
@@ -88,21 +89,3 @@ class ModelParameters:
     def get_lease_assumption(self, lease_type: str, key: str, default=None):
         """Helper to safely get a value from the rental_assumptions dictionary."""
         return self.rental_assumptions.get(lease_type, {}).get(key, default)
-
-# --- Example Usage ---
-# if __name__ == "__main__":
-#     params = ModelParameters(
-#         property_price=300000,
-#         property_size_sqm=40,
-#         property_address_city="Paris"
-#     )
-
-#     # Set specific rents
-#     params.rental_assumptions["airbnb"]["daily_rate"] = 100
-#     params.rental_assumptions["furnished_1yr"]["monthly_rent_sqm"] = 30
-#     params.rental_assumptions["unfurnished_3yr"]["monthly_rent_sqm"] = 25
-
-#     print(params)
-#     print(f"Target Furnished Rent/sqm: {params.get_lease_assumption('furnished_1yr', 'monthly_rent_sqm')} €")
-#     print(f"Airbnb Daily Rate: {params.get_lease_assumption('airbnb', 'daily_rate')} €")
-#     print(f"Management fee for Airbnb: {params.management_fees_percentage_rent.get('airbnb')}")

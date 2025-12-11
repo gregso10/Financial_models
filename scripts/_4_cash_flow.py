@@ -156,5 +156,3 @@ class CashFlow:
 
         print(f"\nDEBUG: CF DataFrame columns = {df_cf.columns.tolist()}")
         return df_cf
-
-# --- (Example Usage section remains similar to before) ---
