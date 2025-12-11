@@ -9,4 +9,5 @@ real_estate/
 *.html
 .python-version
 250gles_impots.txt
-*pycache*
+scripts/__pycache__*
+*__pycache__*
