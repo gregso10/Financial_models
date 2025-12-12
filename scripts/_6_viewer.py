@@ -7,6 +7,7 @@ from ._1_model_params import ModelParameters
 from ._0_financial_model import FinancialModel 
 from ._7_data_visualizer import DataVisualizer
 from ._12_excel_exporter import ExcelExporter
+from ._13_excel_exporter_full import ExcelExporterFull
 
 st.set_page_config(layout="wide", page_title="Real Estate Financial Model")
 
@@ -477,7 +478,7 @@ class ModelViewer:
             st.error(f"Error: {e}")
             st.info("Ensure DVF database exists at data/dvf_fresh_local.db")
 
-    def export_to_excel(self):
+    def export_to_excel(self, export_type: str = "Summary"):
         """Generate and return Excel file for download."""
         if st.session_state.model is None:
             return None
@@ -485,14 +486,19 @@ class ModelViewer:
         model = st.session_state.model
         params = st.session_state.params
         
-        exporter = ExcelExporter(
-            params=params,
-            pnl_df=model.get_pnl(),
-            bs_df=model.get_balance_sheet(),
-            cf_df=model.get_cash_flow(),
-            loan_schedule=model.get_loan_schedule(),
-            investment_metrics=model.get_investment_metrics()
-        )
+        export_args = {
+            "params": params,
+            "pnl_df": model.get_pnl(),
+            "bs_df": model.get_balance_sheet(),
+            "cf_df": model.get_cash_flow(),
+            "loan_schedule": model.get_loan_schedule(),
+            "investment_metrics": model.get_investment_metrics()
+        }
+        
+        if export_type == "Full Model":
+            exporter = ExcelExporterFull(**export_args)
+        else:
+            exporter = ExcelExporter(**export_args)
         
         return exporter.export()
     
@@ -524,18 +530,22 @@ class ModelViewer:
                     st.error(f"Simulation error: {e}")
                     st.exception(e)
         
-        # Excel Export Button (after simulation)
+        # Excel Export Section (only show after simulation)
         if st.session_state.model is not None:
             st.sidebar.markdown("---")
             st.sidebar.subheader("📥 Export")
             
-            excel_data = self.export_to_excel()
+            export_type = st.sidebar.radio("Export Type", ["Summary", "Full Model"], 
+                                           help="Summary: Yearly aggregates | Full Model: Monthly with formulas")
+            
+            excel_data = self.export_to_excel(export_type)
             if excel_data:
+                filename = "financial_model_full.xlsx" if export_type == "Full Model" else "financial_model.xlsx"
                 st.sidebar.download_button(
                     label="📊 Download Excel Model",
                     data=excel_data,
-                    file_name="financial_model.xlsx",
-                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.xml"
+                    file_name=filename,
+                    mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
                 )
         
         # Navigation
