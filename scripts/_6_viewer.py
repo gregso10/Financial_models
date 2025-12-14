@@ -34,13 +34,7 @@ class ModelViewer:
         """Creates sidebar inputs with translations and improved UX."""
         
         # Language toggle at top of sidebar
-        col1, col2 = st.sidebar.columns([3, 1])
-        with col1:
-            st.sidebar.header(t("simulation_params"))
-        with col2:
-            if st.sidebar.button("🌐 FR/EN", key="lang_toggle"):
-                toggle_language()
-                st.rerun()
+        st.sidebar.header(t("simulation_params"))
         
         inputs: Dict[str, Any] = {} 
 
@@ -54,6 +48,8 @@ class ModelViewer:
             format="%.0f",
             help=t("property_price_help")
         )
+        if inputs["property_price"] > 0:
+            st.sidebar.caption(f"→ {fmt_currency(inputs['property_price'])}")
         
         # Agency fees as 0-100% display
         inputs["agency_fees_percentage"] = st.sidebar.slider(
@@ -75,12 +71,38 @@ class ModelViewer:
         inputs["notary_fees_percentage_estimate"] = 0.08 if t("notary_ancien") in notary_type else 0.055
         
         inputs["property_size_sqm"] = st.sidebar.number_input(t("property_size"), value=defaults.property_size_sqm, step=1.0, format="%.1f")
+        
         inputs["initial_renovation_costs"] = st.sidebar.number_input(t("initial_renovation"), value=defaults.initial_renovation_costs, step=500.0, format="%.0f")
+        if inputs["initial_renovation_costs"] > 0:
+            st.sidebar.caption(f"→ {fmt_currency(inputs['initial_renovation_costs'])}")
+        
         inputs["furnishing_costs"] = st.sidebar.number_input(t("furnishing_costs"), value=defaults.furnishing_costs, step=100.0, format="%.0f")
+        if inputs["furnishing_costs"] > 0:
+            st.sidebar.caption(f"→ {fmt_currency(inputs['furnishing_costs'])}")
 
         # --- Calculate estimated total acquisition cost for loan % display ---
         est_notary = inputs["property_price"] * inputs["notary_fees_percentage_estimate"]
         est_total_acq = inputs["property_price"] + est_notary + inputs["initial_renovation_costs"] + inputs["furnishing_costs"]
+        
+        # Show acquisition cost breakdown
+        if inputs["property_price"] > 0:
+            st.sidebar.markdown("---")
+            if get_language() == "fr":
+                st.sidebar.caption(f"**Coût total estimé:** {fmt_currency(est_total_acq)}")
+                st.sidebar.caption(f"  • Bien: {fmt_currency(inputs['property_price'])}")
+                st.sidebar.caption(f"  • Notaire: {fmt_currency(est_notary)}")
+                if inputs["initial_renovation_costs"] > 0:
+                    st.sidebar.caption(f"  • Travaux: {fmt_currency(inputs['initial_renovation_costs'])}")
+                if inputs["furnishing_costs"] > 0:
+                    st.sidebar.caption(f"  • Mobilier: {fmt_currency(inputs['furnishing_costs'])}")
+            else:
+                st.sidebar.caption(f"**Estimated total cost:** {fmt_currency(est_total_acq)}")
+                st.sidebar.caption(f"  • Property: {fmt_currency(inputs['property_price'])}")
+                st.sidebar.caption(f"  • Notary: {fmt_currency(est_notary)}")
+                if inputs["initial_renovation_costs"] > 0:
+                    st.sidebar.caption(f"  • Renovation: {fmt_currency(inputs['initial_renovation_costs'])}")
+                if inputs["furnishing_costs"] > 0:
+                    st.sidebar.caption(f"  • Furnishing: {fmt_currency(inputs['furnishing_costs'])}")
 
         # --- Financing ---
         st.sidebar.subheader(t("financing"))
@@ -97,13 +119,13 @@ class ModelViewer:
             help=t("loan_amount_help")
         )
         
-        # Calculate and display induced percentage
+        # Calculate and display induced percentage with formatted values
         if est_total_acq > 0:
             induced_pct = (loan_amount / est_total_acq) * 100
             if get_language() == "fr":
-                st.sidebar.caption(f"→ {induced_pct:.1f}% du coût total d'acquisition ({fmt_currency(est_total_acq)})")
+                st.sidebar.caption(f"→ {fmt_currency(loan_amount)} = {induced_pct:.1f}% du coût total ({fmt_currency(est_total_acq)})")
             else:
-                st.sidebar.caption(f"→ {induced_pct:.1f}% of total acquisition cost ({fmt_currency(est_total_acq)})")
+                st.sidebar.caption(f"→ {fmt_currency(loan_amount)} = {induced_pct:.1f}% of total cost ({fmt_currency(est_total_acq)})")
             inputs["loan_percentage"] = loan_amount / est_total_acq
         else:
             inputs["loan_percentage"] = defaults.loan_percentage
@@ -149,6 +171,9 @@ class ModelViewer:
         if lease_type_choice == "airbnb":
             st.sidebar.write(f"**{t('airbnb_specifics')}**")
             inputs["rental_assumptions"]["airbnb"]["daily_rate"] = st.sidebar.number_input(t("daily_rate"), value=defaults.rental_assumptions["airbnb"]["daily_rate"], step=1.0)
+            if inputs["rental_assumptions"]["airbnb"]["daily_rate"] > 0:
+                daily = inputs["rental_assumptions"]["airbnb"]["daily_rate"]
+                st.sidebar.caption(f"→ {fmt_currency(daily)}/nuit")
             inputs["rental_assumptions"]["airbnb"]["occupancy_rate"] = st.sidebar.slider(
                 t("occupancy_rate"), 
                 0.0, 100.0, 
@@ -160,6 +185,11 @@ class ModelViewer:
         elif lease_type_choice in ["furnished_1yr", "unfurnished_3yr"]:
             st.sidebar.write(f"**{lease_type_choice}:**")
             inputs["rental_assumptions"][lease_type_choice]["monthly_rent_sqm"] = st.sidebar.number_input(t("monthly_rent_sqm"), value=defaults.rental_assumptions[lease_type_choice]["monthly_rent_sqm"], step=0.5)
+            if inputs["rental_assumptions"][lease_type_choice]["monthly_rent_sqm"] > 0 and inputs["property_size_sqm"] > 0:
+                rent_sqm = inputs["rental_assumptions"][lease_type_choice]["monthly_rent_sqm"]
+                total_monthly = rent_sqm * inputs["property_size_sqm"]
+                total_yearly = total_monthly * 12
+                st.sidebar.caption(f"→ {fmt_currency(total_monthly)}/mois = {fmt_currency(total_yearly)}/an")
             inputs["rental_assumptions"][lease_type_choice]["vacancy_rate"] = st.sidebar.slider(
                 t("vacancy_rate"), 
                 0.0, 50.0, 
@@ -172,7 +202,14 @@ class ModelViewer:
         # --- Operating Expenses ---
         st.sidebar.subheader(t("operating_expenses"))
         inputs["property_tax_yearly"] = st.sidebar.number_input(t("property_tax_yearly"), value=defaults.property_tax_yearly, step=10.0, format="%.0f")
+        if inputs["property_tax_yearly"] > 0:
+            st.sidebar.caption(f"→ {fmt_currency(inputs['property_tax_yearly'])}/an")
+        
         inputs["condo_fees_monthly"] = st.sidebar.number_input(t("condo_fees_monthly"), value=defaults.condo_fees_monthly, step=5.0, format="%.0f")
+        if inputs["condo_fees_monthly"] > 0:
+            yearly_condo = inputs["condo_fees_monthly"] * 12
+            st.sidebar.caption(f"→ {fmt_currency(inputs['condo_fees_monthly'])}/mois = {fmt_currency(yearly_condo)}/an")
+        
         inputs["maintenance_percentage_rent"] = st.sidebar.slider(
             t("maintenance_pct"), 
             0.0, 15.0, 
@@ -181,7 +218,11 @@ class ModelViewer:
             format="%.1f%%",
             help=t("maintenance_help")
         ) / 100
+        
         inputs["pno_insurance_yearly"] = st.sidebar.number_input(t("pno_insurance"), value=defaults.pno_insurance_yearly, step=5.0, format="%.0f")
+        if inputs["pno_insurance_yearly"] > 0:
+            st.sidebar.caption(f"→ {fmt_currency(inputs['pno_insurance_yearly'])}/an")
+        
         inputs["management_fees_percentage_rent"] = defaults.management_fees_percentage_rent 
         inputs["expenses_growth_rate"] = st.sidebar.slider(
             t("expenses_growth"), 
@@ -673,9 +714,45 @@ class ModelViewer:
         return exporter.export()
     
     def run(self):
-        """Main app orchestrator"""
+        """Main app orchestrator with Simple/Expert mode toggle"""
         st.title(t("app_title"))
         
+        # === LANGUAGE TOGGLE (very top) ===
+        col_lang, col_space = st.sidebar.columns([1, 1])
+        with col_lang:
+            if st.button("🌐 FR/EN", key="lang_toggle_main", width=120):
+                toggle_language()
+                st.rerun()
+        
+        # === MODE TOGGLE ===
+        if 'app_mode' not in st.session_state:
+            st.session_state.app_mode = "simple"
+        
+        mode_label = "🎯 Simple" if get_language() == "fr" else "🎯 Simple"
+        expert_label = "⚙️ Expert" if get_language() == "fr" else "⚙️ Expert"
+        
+        col_mode1, col_mode2 = st.sidebar.columns(2)
+        with col_mode1:
+            if st.button(mode_label, use_container_width=True, 
+                        type="primary" if st.session_state.app_mode == "simple" else "secondary"):
+                st.session_state.app_mode = "simple"
+                st.rerun()
+        with col_mode2:
+            if st.button(expert_label, use_container_width=True,
+                        type="primary" if st.session_state.app_mode == "expert" else "secondary"):
+                st.session_state.app_mode = "expert"
+                st.rerun()
+        
+        st.sidebar.markdown("---")
+        
+        # === SIMPLE MODE ===
+        if st.session_state.app_mode == "simple":
+            from ._16_simple_viewer import SimpleViewer
+            simple_viewer = SimpleViewer()
+            simple_viewer.display()
+            return
+        
+        # === EXPERT MODE (existing code) ===
         # Sidebar inputs
         default_params = ModelParameters()
         user_widget_values = self.display_sidebar_inputs(default_params)
