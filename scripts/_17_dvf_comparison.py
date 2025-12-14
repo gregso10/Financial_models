@@ -66,6 +66,13 @@ class DVFComparison:
         }
         return CITY_COORDS.get(city)
     
+    def get_adaptive_radius(self, city: str) -> float:
+        # Paris, Lyon, Marseille demandent une précision chirurgicale
+        dense_cities = ["Paris", "Lyon", "Marseille", "Bordeaux", "Nice"]
+        if any(c in city for c in dense_cities):
+            return 0.5 # 500m max en zone dense
+        return 2.0
+
     def get_market_comparison(
         self,
         city: str,
@@ -73,7 +80,7 @@ class DVFComparison:
         surface_sqm: float,
         radius_km: float = 2.0,
         months_back: int = 12,
-        surface_tolerance: float = 0.3,  # ±30%
+        surface_tolerance: float = 0.15,  # ±30%
     ) -> Optional[Dict]:
         """
         Compare property against local market.
@@ -84,7 +91,7 @@ class DVFComparison:
             surface_sqm: Property surface in m²
             radius_km: Search radius in km
             months_back: How many months of history
-            surface_tolerance: Surface range (0.3 = ±30%)
+            surface_tolerance: Surface range (0.15 = ±15%)
         
         Returns:
             Dict with market insights or None if no data
@@ -106,6 +113,8 @@ class DVFComparison:
             
             lat, lon = coords
             
+            radius_km = self.get_adaptive_radius(city)
+
             # Bounding box for faster SQL (approximate)
             lat_delta = radius_km / 111  # ~111km per degree latitude
             lon_delta = radius_km / (111 * cos(radians(lat)))
