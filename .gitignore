@@ -11,3 +11,4 @@ real_estate/
 250gles_impots.txt
 scripts/__pycache__*
 *__pycache__*
+*.docx
