@@ -8,6 +8,7 @@ from ._0_financial_model import FinancialModel
 from ._7_data_visualizer import DataVisualizer
 from ._12_excel_exporter import ExcelExporter
 from ._13_excel_exporter_full import ExcelExporterFull
+from ._14_translations import t, toggle_language, get_language, get_pnl_label_map, get_cf_label_map, fmt_number, fmt_currency, fmt_percent
 
 st.set_page_config(layout="wide", page_title="Real Estate Financial Model")
 
@@ -15,85 +16,247 @@ class ModelViewer:
     """
     Multi-page Streamlit interface for the financial model.
     Pages: Dashboard, P&L, Balance Sheet, Cash Flow
+    Supports English/French translation.
     """
     
     def __init__(self):
         self.visualizer = DataVisualizer()
         
-        # Initialize session state for model results
+        # Initialize session state
         if 'model' not in st.session_state:
             st.session_state.model = None
         if 'params' not in st.session_state:
             st.session_state.params = None
+        if 'language' not in st.session_state:
+            st.session_state.language = "en"
 
     def display_sidebar_inputs(self, defaults: ModelParameters) -> Dict[str, Any]:
-        """Creates sidebar inputs (unchanged from before)"""
-        st.sidebar.header("Simulation Parameters")
+        """Creates sidebar inputs with translations and improved UX."""
+        
+        # Language toggle at top of sidebar
+        col1, col2 = st.sidebar.columns([3, 1])
+        with col1:
+            st.sidebar.header(t("simulation_params"))
+        with col2:
+            if st.sidebar.button("🌐 FR/EN", key="lang_toggle"):
+                toggle_language()
+                st.rerun()
+        
         inputs: Dict[str, Any] = {} 
 
         # --- Property & Acquisition ---
-        st.sidebar.subheader("Property & Acquisition")
-        inputs["property_address_city"] = st.sidebar.text_input("City", value=defaults.property_address_city)
-        inputs["property_price"] = st.sidebar.number_input("Property Price (€, FAI)", value=defaults.property_price, step=1000.0, format="%.0f")
-        inputs["agency_fees_percentage"] = st.sidebar.slider("Agency Fees (%)", 0.0, 0.15, value=defaults.agency_fees_percentage, step=0.005, format="%.3f")
-        inputs["notary_fees_percentage_estimate"] = st.sidebar.slider("Notary Fees Est. (%)", 0.0, 0.12, value=defaults.notary_fees_percentage_estimate, step=0.001, format="%.3f")
-        inputs["property_size_sqm"] = st.sidebar.number_input("Size (sqm)", value=defaults.property_size_sqm, step=1.0, format="%.1f")
-        inputs["initial_renovation_costs"] = st.sidebar.number_input("Initial Renovation (€)", value=defaults.initial_renovation_costs, step=500.0, format="%.0f")
-        inputs["furnishing_costs"] = st.sidebar.number_input("Furnishing (€)", value=defaults.furnishing_costs, step=100.0, format="%.0f")
+        st.sidebar.subheader(t("property_acquisition"))
+        inputs["property_address_city"] = st.sidebar.text_input(t("city"), value=defaults.property_address_city)
+        inputs["property_price"] = st.sidebar.number_input(
+            t("property_price"), 
+            value=defaults.property_price, 
+            step=1000.0, 
+            format="%.0f",
+            help=t("property_price_help")
+        )
+        
+        # Agency fees as 0-100% display
+        inputs["agency_fees_percentage"] = st.sidebar.slider(
+            t("agency_fees"), 
+            0.0, 15.0, 
+            value=defaults.agency_fees_percentage * 100, 
+            step=0.5, 
+            format="%.1f%%",
+            help=t("agency_fees_help")
+        ) / 100  # Convert back to decimal
+        
+        # Notary fees as radio button
+        notary_type = st.sidebar.radio(
+            t("notary_type"),
+            [t("notary_ancien"), t("notary_neuf")],
+            index=0,
+            help=t("notary_help")
+        )
+        inputs["notary_fees_percentage_estimate"] = 0.08 if t("notary_ancien") in notary_type else 0.055
+        
+        inputs["property_size_sqm"] = st.sidebar.number_input(t("property_size"), value=defaults.property_size_sqm, step=1.0, format="%.1f")
+        inputs["initial_renovation_costs"] = st.sidebar.number_input(t("initial_renovation"), value=defaults.initial_renovation_costs, step=500.0, format="%.0f")
+        inputs["furnishing_costs"] = st.sidebar.number_input(t("furnishing_costs"), value=defaults.furnishing_costs, step=100.0, format="%.0f")
+
+        # --- Calculate estimated total acquisition cost for loan % display ---
+        est_notary = inputs["property_price"] * inputs["notary_fees_percentage_estimate"]
+        est_total_acq = inputs["property_price"] + est_notary + inputs["initial_renovation_costs"] + inputs["furnishing_costs"]
 
         # --- Financing ---
-        st.sidebar.subheader("Financing")
-        inputs["loan_percentage"] = st.sidebar.slider("Loan Percentage (%)", 0.0, 1.1, value=defaults.loan_percentage, step=0.01, format="%.2f")
-        inputs["loan_interest_rate"] = st.sidebar.slider("Loan Interest Rate (%)", 0.0, 0.08, value=defaults.loan_interest_rate, step=0.001, format="%.3f")
-        inputs["loan_duration_years"] = st.sidebar.number_input("Loan Duration (Years)", min_value=1, max_value=30, value=defaults.loan_duration_years, step=1)
-        inputs["loan_insurance_rate"] = st.sidebar.slider("Loan Insurance Rate (%)", 0.0, 0.01, value=defaults.loan_insurance_rate, step=0.0005, format="%.4f")
+        st.sidebar.subheader(t("financing"))
+        
+        # Loan amount as absolute value
+        default_loan_amount = est_total_acq * defaults.loan_percentage
+        loan_amount = st.sidebar.number_input(
+            t("loan_amount_label"),
+            value=default_loan_amount,
+            min_value=0.0,
+            max_value=est_total_acq * 1.1,  # Allow slight over-financing
+            step=1000.0,
+            format="%.0f",
+            help=t("loan_amount_help")
+        )
+        
+        # Calculate and display induced percentage
+        if est_total_acq > 0:
+            induced_pct = (loan_amount / est_total_acq) * 100
+            if get_language() == "fr":
+                st.sidebar.caption(f"→ {induced_pct:.1f}% du coût total d'acquisition ({fmt_currency(est_total_acq)})")
+            else:
+                st.sidebar.caption(f"→ {induced_pct:.1f}% of total acquisition cost ({fmt_currency(est_total_acq)})")
+            inputs["loan_percentage"] = loan_amount / est_total_acq
+        else:
+            inputs["loan_percentage"] = defaults.loan_percentage
+        
+        # Interest rate as 0-100% display
+        inputs["loan_interest_rate"] = st.sidebar.slider(
+            t("loan_interest_rate"), 
+            0.0, 8.0, 
+            value=defaults.loan_interest_rate * 100, 
+            step=0.1, 
+            format="%.1f%%",
+            help=t("loan_interest_help")
+        ) / 100
+        
+        inputs["loan_duration_years"] = st.sidebar.number_input(
+            t("loan_duration"), 
+            min_value=1, 
+            max_value=30, 
+            value=defaults.loan_duration_years, 
+            step=1,
+            help=t("loan_duration_help")
+        )
+        
+        # Loan insurance as 0-100% display (but smaller range)
+        inputs["loan_insurance_rate"] = st.sidebar.slider(
+            t("loan_insurance_rate"), 
+            0.0, 1.0, 
+            value=defaults.loan_insurance_rate * 100, 
+            step=0.05, 
+            format="%.2f%%",
+            help=t("loan_insurance_help")
+        ) / 100
 
         # --- Rental Assumptions ---
-        st.sidebar.subheader("Rental Assumptions")
+        st.sidebar.subheader(t("rental_assumptions"))
         lease_type_choice = st.sidebar.selectbox(
-            "Select Lease Type for Simulation", list(defaults.rental_assumptions.keys()),
+            t("select_lease_type"), list(defaults.rental_assumptions.keys()),
             key="lease_type_selector"
         )
         inputs["lease_type_choice"] = lease_type_choice
         inputs["rental_assumptions"] = defaults.rental_assumptions.copy() 
 
         if lease_type_choice == "airbnb":
-            st.sidebar.write("**Airbnb Specifics:**")
-            inputs["rental_assumptions"]["airbnb"]["daily_rate"] = st.sidebar.number_input("Daily Rate (€)", value=defaults.rental_assumptions["airbnb"]["daily_rate"], step=1.0)
-            inputs["rental_assumptions"]["airbnb"]["occupancy_rate"] = st.sidebar.slider("Occupancy Rate", 0.0, 1.0, value=defaults.rental_assumptions["airbnb"]["occupancy_rate"], step=0.01)
+            st.sidebar.write(f"**{t('airbnb_specifics')}**")
+            inputs["rental_assumptions"]["airbnb"]["daily_rate"] = st.sidebar.number_input(t("daily_rate"), value=defaults.rental_assumptions["airbnb"]["daily_rate"], step=1.0)
+            inputs["rental_assumptions"]["airbnb"]["occupancy_rate"] = st.sidebar.slider(
+                t("occupancy_rate"), 
+                0.0, 100.0, 
+                value=defaults.rental_assumptions["airbnb"]["occupancy_rate"] * 100, 
+                step=1.0,
+                format="%.0f%%",
+                help=t("occupancy_help")
+            ) / 100
         elif lease_type_choice in ["furnished_1yr", "unfurnished_3yr"]:
-            st.sidebar.write(f"**{lease_type_choice} Specifics:**")
-            inputs["rental_assumptions"][lease_type_choice]["monthly_rent_sqm"] = st.sidebar.number_input("Monthly Rent / sqm (€)", value=defaults.rental_assumptions[lease_type_choice]["monthly_rent_sqm"], step=0.5)
-            inputs["rental_assumptions"][lease_type_choice]["vacancy_rate"] = st.sidebar.slider("Annual Vacancy Rate", 0.0, 0.5, value=defaults.rental_assumptions[lease_type_choice]["vacancy_rate"], step=0.01)
+            st.sidebar.write(f"**{lease_type_choice}:**")
+            inputs["rental_assumptions"][lease_type_choice]["monthly_rent_sqm"] = st.sidebar.number_input(t("monthly_rent_sqm"), value=defaults.rental_assumptions[lease_type_choice]["monthly_rent_sqm"], step=0.5)
+            inputs["rental_assumptions"][lease_type_choice]["vacancy_rate"] = st.sidebar.slider(
+                t("vacancy_rate"), 
+                0.0, 50.0, 
+                value=defaults.rental_assumptions[lease_type_choice]["vacancy_rate"] * 100, 
+                step=1.0,
+                format="%.0f%%",
+                help=t("vacancy_help")
+            ) / 100
 
         # --- Operating Expenses ---
-        st.sidebar.subheader("Operating Expenses")
-        inputs["property_tax_yearly"] = st.sidebar.number_input("Property Tax (€/Year)", value=defaults.property_tax_yearly, step=10.0, format="%.0f")
-        inputs["condo_fees_monthly"] = st.sidebar.number_input("Condo Fees (€/Month)", value=defaults.condo_fees_monthly, step=5.0, format="%.0f")
-        inputs["maintenance_percentage_rent"] = st.sidebar.slider("Maintenance (% of GOI)", 0.0, 0.15, value=defaults.maintenance_percentage_rent, step=0.005, format="%.3f")
-        inputs["pno_insurance_yearly"] = st.sidebar.number_input("PNO Insurance (€/Year)", value=defaults.pno_insurance_yearly, step=5.0, format="%.0f")
+        st.sidebar.subheader(t("operating_expenses"))
+        inputs["property_tax_yearly"] = st.sidebar.number_input(t("property_tax_yearly"), value=defaults.property_tax_yearly, step=10.0, format="%.0f")
+        inputs["condo_fees_monthly"] = st.sidebar.number_input(t("condo_fees_monthly"), value=defaults.condo_fees_monthly, step=5.0, format="%.0f")
+        inputs["maintenance_percentage_rent"] = st.sidebar.slider(
+            t("maintenance_pct"), 
+            0.0, 15.0, 
+            value=defaults.maintenance_percentage_rent * 100, 
+            step=0.5, 
+            format="%.1f%%",
+            help=t("maintenance_help")
+        ) / 100
+        inputs["pno_insurance_yearly"] = st.sidebar.number_input(t("pno_insurance"), value=defaults.pno_insurance_yearly, step=5.0, format="%.0f")
         inputs["management_fees_percentage_rent"] = defaults.management_fees_percentage_rent 
-        inputs["expenses_growth_rate"] = st.sidebar.slider("Annual Expenses Growth Rate", 0.0, 0.05, value=defaults.expenses_growth_rate, step=0.001, format="%.3f")
+        inputs["expenses_growth_rate"] = st.sidebar.slider(
+            t("expenses_growth"), 
+            0.0, 5.0, 
+            value=defaults.expenses_growth_rate * 100, 
+            step=0.1, 
+            format="%.1f%%",
+            help=t("expenses_growth_help")
+        ) / 100
 
-        # --- Fiscal Parameters (Dynamic) ---     
+        # --- Fiscal Parameters ---     
         if lease_type_choice == "unfurnished_3yr":
             valid_regimes = ["Revenu Foncier Réel", "Micro-Foncier"]
         else:
             valid_regimes = ["LMNP Réel", "Micro-BIC"]
         
-        inputs["fiscal_regime"] = st.sidebar.selectbox("Fiscal Regime", valid_regimes, index=0)
-        inputs["personal_income_tax_bracket"] = st.sidebar.slider("Income Tax Bracket (TMI)", 0.0, 0.45, value=defaults.personal_income_tax_bracket, step=0.01)
+        inputs["fiscal_regime"] = st.sidebar.selectbox(t("fiscal_regime"), valid_regimes, index=0)
+        inputs["personal_income_tax_bracket"] = st.sidebar.slider(
+            t("income_tax_bracket"), 
+            0.0, 45.0, 
+            value=defaults.personal_income_tax_bracket * 100, 
+            step=1.0,
+            format="%.0f%%"
+        ) / 100
 
         # --- Exit Parameters ---
-        st.sidebar.subheader("Exit Strategy")
-        inputs["holding_period_years"] = st.sidebar.number_input("Holding Period (Years)", min_value=1, max_value=50, value=defaults.holding_period_years, step=1)
-        inputs["property_value_growth_rate"] = st.sidebar.slider("Annual Property Value Growth", 0.0, 0.10, value=defaults.property_value_growth_rate, step=0.001, format="%.3f")
-        inputs["exit_selling_fees_percentage"] = st.sidebar.slider("Selling Fees (%)", 0.0, 0.10, value=defaults.exit_selling_fees_percentage, step=0.005, format="%.3f")
+        st.sidebar.subheader(t("exit_strategy"))
+        inputs["holding_period_years"] = st.sidebar.number_input(
+            t("holding_period"), 
+            min_value=1, 
+            max_value=50, 
+            value=defaults.holding_period_years, 
+            step=1,
+            help=t("holding_period_help")
+        )
+        inputs["property_value_growth_rate"] = st.sidebar.slider(
+            t("property_growth"), 
+            0.0, 10.0, 
+            value=defaults.property_value_growth_rate * 100, 
+            step=0.1, 
+            format="%.1f%%",
+            help=t("property_growth_help")
+        ) / 100
+        inputs["exit_selling_fees_percentage"] = st.sidebar.slider(
+            t("selling_fees"), 
+            0.0, 10.0, 
+            value=defaults.exit_selling_fees_percentage * 100, 
+            step=0.5, 
+            format="%.1f%%"
+        ) / 100
         
-        # --- Investment Analysis ---
-        st.sidebar.subheader("Investment Analysis")
-        inputs["risk_free_rate"] = st.sidebar.slider("Risk-Free Rate (OAT 20Y)", 0.0, 0.10, value=getattr(defaults, 'risk_free_rate', 0.035), step=0.001, format="%.3f", help="French government bond rate")
-        inputs["discount_rate"] = st.sidebar.slider("Discount Rate", 0.0, 0.15, value=getattr(defaults, 'discount_rate', 0.05), step=0.005, format="%.3f", help="Project discount rate (risk-free + risk premium)")
+        # --- Investment Analysis with detailed explanations ---
+        st.sidebar.subheader(t("investment_analysis"))
+        
+        # Risk-free rate with explanation expander
+        with st.sidebar.expander("ℹ️ " + t("risk_free_rate")):
+            st.markdown(t("risk_free_rate_explanation"))
+        inputs["risk_free_rate"] = st.sidebar.slider(
+            t("risk_free_rate"), 
+            0.0, 10.0, 
+            value=getattr(defaults, 'risk_free_rate', 0.035) * 100, 
+            step=0.1, 
+            format="%.1f%%"
+        ) / 100
+        
+        # Discount rate with explanation expander
+        with st.sidebar.expander("ℹ️ " + t("discount_rate")):
+            st.markdown(t("discount_rate_explanation"))
+        inputs["discount_rate"] = st.sidebar.slider(
+            t("discount_rate"), 
+            0.0, 15.0, 
+            value=getattr(defaults, 'discount_rate', 0.05) * 100, 
+            step=0.5, 
+            format="%.1f%%"
+        ) / 100
 
         return inputs
 
@@ -102,52 +265,63 @@ class ModelViewer:
         rows_to_flip = df.index.intersection(expense_rows)
         df.loc[rows_to_flip] *= -1
         df_k = df / 1000.0
-        df_k.index.name = "(in €k)"
+        df_k.index.name = t("in_k_euros")
         df_k.index = df_k.index.map(lambda x: label_map.get(x, x))
         return df_k
 
     def style_financial_dataframe(self, df: pd.DataFrame):
-        """Apply styling to financial dataframes"""
+        """Apply styling to financial dataframes with locale-aware formatting"""
+        lang = get_language()
+        
         def format_k_euros(val):
             if pd.isna(val): return "-"
             try:
                 val_int = int(round(val, 0))
-                if val_int < 0: return f"({abs(val_int):,})"
-                elif val_int == 0: return "0"
-                else: return f"{val_int:,}"
-            except (ValueError, TypeError): return val
+                if val_int < 0:
+                    # Negative: show in brackets
+                    if lang == "fr":
+                        return f"({abs(val_int):,})".replace(",", " ")
+                    else:
+                        return f"({abs(val_int):,})"
+                elif val_int == 0:
+                    return "0"
+                else:
+                    if lang == "fr":
+                        return f"{val_int:,}".replace(",", " ")
+                    else:
+                        return f"{val_int:,}"
+            except (ValueError, TypeError): 
+                return val
 
         def style_financial_rows(row):
             row_name_clean = row.name.strip()
             styles = [''] * len(row)
-            if 'Total' in row_name_clean or 'Net' in row_name_clean:
+            if 'Total' in row_name_clean or 'Net' in row_name_clean or 'Résultat' in row_name_clean:
                 styles = ['font-weight: bold'] * len(row)
             separator_rows = [
-                "Gross Operating Income", "Total Operating Expenses", 
-                "Net Operating Income", "Taxable Income", "Total Taxes", 
-                "Net Income", "Cash Flow from Operations (CFO)",
-                "Cash Flow from Investing (CFI)", "Cash Flow from Financing (CFF)"
+                t("gross_operating_income"), t("total_opex"), 
+                t("noi"), t("taxable_income"), t("total_taxes"), 
+                t("net_income"), t("cfo"), t("cfi"), t("cff")
             ]
             if row_name_clean in separator_rows:
                 styles = [s + '; border-top: 1px solid #4b5563' for s in styles]
-            if row_name_clean == 'Net Income':
+            if row_name_clean == t("net_income"):
                 styles = ['background-color: lightgrey; font-weight: bold; color: black; border-top: 2px solid white;'] * len(row)
             return styles
 
         def style_index_label(label):
             label_clean = label.strip()
             style = 'text-align: left; padding-left: 5px; '
-            if 'Total' in label_clean or 'Net' in label_clean:
+            if 'Total' in label_clean or 'Net' in label_clean or 'Résultat' in label_clean:
                 style += 'font-weight: bold; '
             separator_rows = [
-                "Gross Operating Income", "Total Operating Expenses", 
-                "Net Operating Income", "Taxable Income", "Total Taxes", 
-                "Net Income", "Cash Flow from Operations (CFO)",
-                "Cash Flow from Investing (CFI)", "Cash Flow from Financing (CFF)"
+                t("gross_operating_income"), t("total_opex"), 
+                t("noi"), t("taxable_income"), t("total_taxes"), 
+                t("net_income"), t("cfo"), t("cfi"), t("cff")
             ]
             if label_clean in separator_rows:
                 style += 'border-top: 1px solid #4b5563; '
-            if label_clean == 'Net Income':
+            if label_clean == t("net_income"):
                 style = 'background-color: lightgrey !important; font-weight: bold !important; color: black !important; border-top: 2px solid white !important; text-align: left !important; padding-left: 5px !important;'
             return style
 
@@ -163,12 +337,28 @@ class ModelViewer:
         
         return styled
 
+    def _fmt_k_currency(self, value: float) -> str:
+        """Format value in k€ with locale awareness."""
+        k_val = value / 1000
+        if get_language() == "fr":
+            return f"{k_val:,.1f}k €".replace(",", " ").replace(".", ",")
+        else:
+            return f"€{k_val:,.1f}k"
+    
+    def _fmt_pct(self, value: float, decimals: int = 2) -> str:
+        """Format percentage with locale awareness. Value in decimal (0.05 = 5%)"""
+        pct = value * 100
+        if get_language() == "fr":
+            return f"{pct:.{decimals}f}%".replace(".", ",")
+        else:
+            return f"{pct:.{decimals}f}%"
+
     def display_dashboard(self):
         """Dashboard page with summary metrics and charts"""
-        st.header("📊 Investment Dashboard")
+        st.header(t("investment_dashboard"))
         
         if st.session_state.model is None:
-            st.info("Run simulation from sidebar to see dashboard.")
+            st.info(t("run_simulation_prompt"))
             return
         
         model = st.session_state.model
@@ -180,34 +370,42 @@ class ModelViewer:
         
         # === ROW 1: KEY INVESTMENT METRICS ===
         if metrics:
-            st.subheader("🎯 Investment Performance Metrics")
+            st.subheader(t("investment_metrics"))
+            
+            # Explanation expanders for key metrics
+            col_exp1, col_exp2 = st.columns(2)
+            with col_exp1:
+                with st.expander("ℹ️ " + t("irr") + " - " + ("What is IRR?" if get_language() == "en" else "Qu'est-ce que le TRI ?")):
+                    st.markdown(t("irr_explanation"))
+            with col_exp2:
+                with st.expander("ℹ️ " + t("npv") + " - " + ("What is NPV?" if get_language() == "en" else "Qu'est-ce que la VAN ?")):
+                    st.markdown(t("npv_explanation"))
+            
             col_m1, col_m2, col_m3, col_m4 = st.columns(4)
             
             with col_m1:
-                irr_value = metrics.get('irr', 0) * 100
-                st.metric("IRR", f"{irr_value:.2f}%", help="Internal Rate of Return - annualized return on equity investment")
+                st.metric(t("irr"), self._fmt_pct(metrics.get('irr', 0)), help=t("irr_help"))
             with col_m2:
-                npv_value = metrics.get('npv', 0) / 1000
                 discount_rate = getattr(params, 'discount_rate', 0.05) * 100
-                st.metric("NPV", f"€{npv_value:.1f}k", help=f"Net Present Value at {discount_rate:.1f}% discount rate")
+                st.metric(t("npv"), self._fmt_k_currency(metrics.get('npv', 0)), help=t("npv_help", rate=f"{discount_rate:.1f}"))
             with col_m3:
-                coc_value = metrics.get('cash_on_cash', 0) * 100
-                st.metric("Cash-on-Cash (Y1)", f"{coc_value:.2f}%", help="Year 1 cash flow divided by initial equity invested")
+                st.metric(t("cash_on_cash"), self._fmt_pct(metrics.get('cash_on_cash', 0)), help=t("cash_on_cash_help"))
             with col_m4:
                 em_value = metrics.get('equity_multiple', 0)
-                st.metric("Equity Multiple", f"{em_value:.2f}x", help="Total cash returned divided by initial equity")
+                em_display = f"{em_value:.2f}".replace(".", ",") + "x" if get_language() == "fr" else f"{em_value:.2f}x"
+                st.metric(t("equity_multiple"), em_display, help=t("equity_multiple_help"))
             
-            with st.expander("📤 Exit Scenario Details"):
+            with st.expander(t("exit_scenario_details")):
                 col_e1, col_e2, col_e3 = st.columns(3)
                 with col_e1:
-                    st.metric("Exit Property Value", f"€{metrics.get('exit_property_value', 0)/1000:.1f}k")
-                    st.metric("Capital Gain", f"€{metrics.get('capital_gain', 0)/1000:.1f}k")
+                    st.metric(t("exit_property_value"), self._fmt_k_currency(metrics.get('exit_property_value', 0)))
+                    st.metric(t("capital_gain"), self._fmt_k_currency(metrics.get('capital_gain', 0)))
                 with col_e2:
-                    st.metric("Selling Costs", f"€{metrics.get('selling_costs', 0)/1000:.1f}k")
-                    st.metric("Capital Gains Tax", f"€{metrics.get('capital_gains_tax', 0)/1000:.1f}k")
+                    st.metric(t("selling_costs"), self._fmt_k_currency(metrics.get('selling_costs', 0)))
+                    st.metric(t("capital_gains_tax"), self._fmt_k_currency(metrics.get('capital_gains_tax', 0)))
                 with col_e3:
-                    st.metric("Remaining Loan", f"€{metrics.get('remaining_loan_balance', 0)/1000:.1f}k")
-                    st.metric("Net Exit Proceeds", f"€{metrics.get('net_exit_proceeds', 0)/1000:.1f}k")
+                    st.metric(t("remaining_loan"), self._fmt_k_currency(metrics.get('remaining_loan_balance', 0)))
+                    st.metric(t("net_exit_proceeds"), self._fmt_k_currency(metrics.get('net_exit_proceeds', 0)))
             
             st.markdown("---")
         
@@ -215,18 +413,18 @@ class ModelViewer:
         col1, col2 = st.columns([1, 1])
         
         with col1:
-            st.subheader("Consolidated Cash Flow (Total Period)")
+            st.subheader(t("consolidated_cf"))
             consolidated_cf = self.visualizer.create_consolidated_cf_table(pnl, cf, params)
             if consolidated_cf is not None:
                 st.dataframe(self.style_financial_dataframe(consolidated_cf), use_container_width=True, height=600)
         
         with col2:
-            st.subheader("P&L Sankey (Total Period)")
+            st.subheader(t("pnl_sankey_total"))
             pnl_sankey = self.visualizer.create_pnl_sankey_total(pnl)
             if pnl_sankey:
                 st.plotly_chart(pnl_sankey, use_container_width=True)
             
-            st.subheader("Cash Flow Sankey (Total Period)")
+            st.subheader(t("cf_sankey_total"))
             cf_sankey = self.visualizer.create_cf_sankey_total(cf)
             if cf_sankey:
                 st.plotly_chart(cf_sankey, use_container_width=True)
@@ -235,33 +433,38 @@ class ModelViewer:
         
         # === ROW 3: LOAN ANALYSIS ===
         if loan_schedule is not None and len(loan_schedule) > 0:
-            st.subheader("📋 Loan Analysis")
+            st.subheader(t("loan_analysis"))
             col_loan1, col_loan2 = st.columns([1, 1])
             
             with col_loan1:
-                st.markdown("**Amortization Schedule (Yearly)**")
+                st.markdown(f"**{t('amortization_yearly')}**")
                 loan_table = self.visualizer.format_loan_schedule_table(loan_schedule)
                 if loan_table is not None:
-                    st.dataframe(loan_table.style.format("{:,.1f}"), use_container_width=True, height=400)
+                    # Locale-aware formatting for loan table
+                    if get_language() == "fr":
+                        fmt_str = lambda x: f"{x:,.1f}".replace(",", " ").replace(".", ",") if pd.notna(x) else "-"
+                    else:
+                        fmt_str = "{:,.1f}"
+                    st.dataframe(loan_table.style.format(fmt_str), use_container_width=True, height=400)
             
             with col_loan2:
                 loan_chart = self.visualizer.create_loan_balance_chart(loan_schedule)
                 if loan_chart:
                     st.plotly_chart(loan_chart, use_container_width=True)
             
-            st.markdown("**Payment Sensitivity Analysis**")
+            st.markdown(f"**{t('payment_sensitivity')}**")
             sensitivity_heatmap = self.visualizer.create_loan_sensitivity_heatmap(params)
             if sensitivity_heatmap:
                 st.plotly_chart(sensitivity_heatmap, use_container_width=True)
         else:
-            st.info("💰 No loan in this scenario (100% equity financing)")
+            st.info(t("no_loan"))
         
         st.markdown("---")
         
         # === ROW 4: INVESTMENT RETURN SENSITIVITY ===
         if st.session_state.model is None:
             return
-        st.subheader("💎 Investment Return Sensitivity Analysis")
+        st.subheader(t("irr_sensitivity"))
         
         lease_type_used = getattr(params, 'lease_type_used', 'furnished_1yr')
         setattr(params, 'current_lease_type', lease_type_used)
@@ -269,31 +472,31 @@ class ModelViewer:
         col_sens1, col_sens2 = st.columns([1, 1])
         
         with col_sens1:
-            st.markdown("**IRR Sensitivity Heatmap**")
-            st.caption("Varying property value growth rate and loan interest rate")
-            with st.spinner("Calculating IRR sensitivity... (this may take a moment)"):
+            st.markdown(f"**{t('irr_sensitivity_heatmap')}**")
+            st.caption(t("sensitivity_caption"))
+            with st.spinner(t("calculating_irr")):
                 irr_heatmap = self.visualizer.create_irr_sensitivity_heatmap(params)
                 if irr_heatmap:
                     st.plotly_chart(irr_heatmap, use_container_width=True)
                 else:
-                    st.warning("Could not calculate IRR sensitivity")
+                    st.warning(t("could_not_calculate_irr"))
         
         with col_sens2:
-            st.markdown("**NPV Range Analysis**")
-            st.caption("Varying property value growth rate and loan interest rate")
-            with st.spinner("Calculating NPV range..."):
+            st.markdown(f"**{t('npv_sensitivity_heatmap')}**")
+            st.caption(t("sensitivity_caption"))
+            with st.spinner(t("calculating_npv")):
                 npv_heatmap = self.visualizer.create_npv_sensitivity_heatmap(params)
                 if npv_heatmap:
                     st.plotly_chart(npv_heatmap, use_container_width=True)
                 else:
-                    st.warning("Could not calculate npv sensitivity")
+                    st.warning(t("could_not_calculate_npv"))
 
     def display_pnl_page(self):
         """P&L statement page"""
-        st.header("💰 Profit & Loss Statement")
+        st.header(t("pnl_title"))
         
         if st.session_state.model is None:
-            st.info("Run simulation from sidebar to see P&L.")
+            st.info(t("run_simulation_pnl"))
             return
         
         pnl = st.session_state.model.get_pnl()
@@ -302,7 +505,7 @@ class ModelViewer:
         if pnl is not None:
             pnl_yearly = pnl.groupby("Year").sum()
             pnl_pivoted = pnl_yearly.T
-            pnl_pivoted.columns = [f"Year {col}" for col in pnl_pivoted.columns]
+            pnl_pivoted.columns = [f"{t('year')} {col}" for col in pnl_pivoted.columns]
             
             expense_rows = [
                 "Vacancy Loss", "Property Tax", "Condo Fees", "PNO Insurance",
@@ -311,27 +514,7 @@ class ModelViewer:
                 "Depreciation/Amortization", "Income Tax", "Social Contributions", "Total Taxes"
             ]
             
-            label_map = {
-                "Gross Potential Rent": "Gross Potential Rent",
-                "Vacancy Loss": "  Vacancy Loss",
-                "Gross Operating Income": "Gross Operating Income",
-                "Property Tax": "  Property Tax",
-                "Condo Fees": "  Condo Fees",
-                "PNO Insurance": "  PNO Insurance",
-                "Maintenance": "  Maintenance",
-                "Management Fees": "  Management Fees",
-                "Airbnb Specific Costs": "  Airbnb Specific Costs",
-                "Total Operating Expenses": "Total Operating Expenses",
-                "Net Operating Income": "Net Operating Income",
-                "Loan Interest": "  Loan Interest",
-                "Loan Insurance": "  Loan Insurance",
-                "Depreciation/Amortization": "  Depreciation/Amortization",
-                "Taxable Income": "Taxable Income",
-                "Income Tax": "  Income Tax",
-                "Social Contributions": "  Social Contributions",
-                "Total Taxes": "Total Taxes",
-                "Net Income": "Net Income"
-            }
+            label_map = get_pnl_label_map()
             
             pnl_formatted = self.format_financial_table(pnl_pivoted, expense_rows, label_map)
             st.dataframe(self.style_financial_dataframe(pnl_formatted), use_container_width=True, height=700)
@@ -344,15 +527,15 @@ class ModelViewer:
             with col2:
                 sankey_y1 = self.visualizer.create_pnl_sankey(pnl)
                 if sankey_y1:
-                    st.subheader("Year 1 Flow")
+                    st.subheader(t("year_1_flow"))
                     st.plotly_chart(sankey_y1, use_container_width=True)
 
     def display_bs_page(self):
         """Balance Sheet page"""
-        st.header("🏦 Balance Sheet")
+        st.header(t("bs_title"))
         
         if st.session_state.model is None:
-            st.info("Run simulation from sidebar to see Balance Sheet.")
+            st.info(t("run_simulation_bs"))
             return
         
         bs = st.session_state.model.get_balance_sheet()
@@ -362,17 +545,17 @@ class ModelViewer:
             key_months = [0] + [12 * y for y in range(1, params.holding_period_years + 1)]
             bs_yearly = bs.loc[key_months]
             bs_pivoted = bs_yearly.T
-            bs_pivoted.columns = ["Initial"] + [f"Year {i}" for i in range(1, params.holding_period_years + 1)]
+            bs_pivoted.columns = [t("initial")] + [f"{t('year')} {i}" for i in range(1, params.holding_period_years + 1)]
             bs_pivoted_k = bs_pivoted / 1000.0
-            bs_pivoted_k.index.name = "(in €k)"
+            bs_pivoted_k.index.name = t("in_k_euros")
             st.dataframe(self.style_financial_dataframe(bs_pivoted_k), use_container_width=True, height=700)
 
     def display_cf_page(self):
         """Cash Flow statement page"""
-        st.header("💵 Cash Flow Statement")
+        st.header(t("cf_title"))
         
         if st.session_state.model is None:
-            st.info("Run simulation from sidebar to see Cash Flow.")
+            st.info(t("run_simulation_cf"))
             return
         
         cf = st.session_state.model.get_cash_flow()
@@ -387,31 +570,18 @@ class ModelViewer:
                 cf_yearly.loc[year, "Ending Cash Balance"] = year_data["Ending Cash Balance"].iloc[-1]
             
             cf_pivoted = cf_yearly.T
-            cf_pivoted.columns = [f"Year {col}" for col in cf_pivoted.columns]
+            cf_pivoted.columns = [f"{t('year')} {col}" for col in cf_pivoted.columns]
             
             expense_rows = ["Loan Principal Repayment", "Acquisition Costs Outflow"]
             
-            label_map = {
-                "Net Income": "Net Income",
-                "Depreciation/Amortization": "  Depreciation/Amortization",
-                "Cash Flow from Operations (CFO)": "Cash Flow from Operations (CFO)",
-                "Acquisition Costs Outflow": "  Acquisition Costs Outflow",
-                "Cash Flow from Investing (CFI)": "Cash Flow from Investing (CFI)",
-                "Loan Proceeds": "Loan Proceeds",
-                "Equity Injected": "Equity Injected",
-                "Loan Principal Repayment": "  Loan Principal Repayment",
-                "Cash Flow from Financing (CFF)": "Cash Flow from Financing (CFF)",
-                "Net Change in Cash": "Net Change in Cash",
-                "Beginning Cash Balance": "Beginning Cash Balance",
-                "Ending Cash Balance": "Ending Cash Balance"
-            }
+            label_map = get_cf_label_map()
             
             cf_formatted = self.format_financial_table(cf_pivoted, expense_rows, label_map)
             st.dataframe(self.style_financial_dataframe(cf_formatted), use_container_width=True, height=700)
 
     def display_dvf_page(self):
         """Paris 3D price map from DVF database."""
-        st.header("🗺️ Paris Real Estate Prices (€/m²)")
+        st.header(t("dvf_title"))
         
         import pydeck as pdk
         from ._10_dvf_analyzer_local import DVFAnalyzer
@@ -425,14 +595,14 @@ class ModelViewer:
             df = load_paris_data()
             
             if len(df) == 0:
-                st.warning("No Paris data found. Run geocoding first.")
+                st.warning(t("no_paris_data"))
                 return
             
             col1, col2, col3, col4 = st.columns(4)
-            col1.metric("Transactions", f"{len(df):,}")
-            col2.metric("Median €/m²", f"€{df['prix_m2'].median():,.0f}")
-            col3.metric("Mean €/m²", f"€{df['prix_m2'].mean():,.0f}")
-            col4.metric("Max €/m²", f"€{df['prix_m2'].max():,.0f}")
+            col1.metric(t("transactions"), fmt_number(len(df)))
+            col2.metric(t("median_price_sqm"), fmt_currency(df['prix_m2'].median(), 0))
+            col3.metric(t("mean_price_sqm"), fmt_currency(df['prix_m2'].mean(), 0))
+            col4.metric(t("max_price_sqm"), fmt_currency(df['prix_m2'].max(), 0))
             
             import numpy as np
             df = df.copy()
@@ -475,8 +645,8 @@ class ModelViewer:
             st.pydeck_chart(deck, use_container_width=True)
             
         except Exception as e:
-            st.error(f"Error: {e}")
-            st.info("Ensure DVF database exists at data/dvf_fresh_local.db")
+            st.error(t("dvf_error", error=str(e)))
+            st.info(t("dvf_db_info"))
 
     def export_to_excel(self, export_type: str = "Summary"):
         """Generate and return Excel file for download."""
@@ -495,7 +665,7 @@ class ModelViewer:
             "investment_metrics": model.get_investment_metrics()
         }
         
-        if export_type == "Full Model":
+        if export_type == t("full_model"):
             exporter = ExcelExporterFull(**export_args)
         else:
             exporter = ExcelExporter(**export_args)
@@ -504,7 +674,7 @@ class ModelViewer:
     
     def run(self):
         """Main app orchestrator"""
-        st.title("🏠 Real Estate Financial Model")
+        st.title(t("app_title"))
         
         # Sidebar inputs
         default_params = ModelParameters()
@@ -514,35 +684,35 @@ class ModelViewer:
         try:
             current_params = ModelParameters(**user_widget_values)
         except TypeError as e:
-            st.error(f"Error creating parameters: {e}")
+            st.error(t("error_creating_params", error=str(e)))
             st.stop()
         
         # Run simulation button
-        if st.sidebar.button("🚀 Run Simulation", type="primary"):
-            with st.spinner("Running simulation..."):
+        if st.sidebar.button(t("run_simulation"), type="primary"):
+            with st.spinner("..."):
                 model = FinancialModel(current_params)
                 try:
                     model.run_simulation(lease_type=selected_lease)
                     st.session_state.model = model
                     st.session_state.params = current_params
-                    st.sidebar.success("✅ Simulation complete!")
+                    st.sidebar.success(t("simulation_complete"))
                 except Exception as e:
-                    st.error(f"Simulation error: {e}")
+                    st.error(t("simulation_error", error=str(e)))
                     st.exception(e)
         
         # Excel Export Section (only show after simulation)
         if st.session_state.model is not None:
             st.sidebar.markdown("---")
-            st.sidebar.subheader("📥 Export")
+            st.sidebar.subheader(t("export"))
             
-            export_type = st.sidebar.radio("Export Type", ["Summary", "Full Model"], 
-                                           help="Summary: Yearly aggregates | Full Model: Monthly with formulas")
+            export_type = st.sidebar.radio(t("export_type"), [t("summary"), t("full_model")], 
+                                           help=t("export_summary_help"))
             
             excel_data = self.export_to_excel(export_type)
             if excel_data:
-                filename = "financial_model_full.xlsx" if export_type == "Full Model" else "financial_model.xlsx"
+                filename = "financial_model_full.xlsx" if export_type == t("full_model") else "financial_model.xlsx"
                 st.sidebar.download_button(
-                    label="📊 Download Excel Model",
+                    label=t("download_excel"),
                     data=excel_data,
                     file_name=filename,
                     mime="application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"
@@ -550,16 +720,17 @@ class ModelViewer:
         
         # Navigation
         st.sidebar.markdown("---")
-        page = st.sidebar.radio("Navigate", ["Dashboard", "P&L Statement", "Balance Sheet", "Cash Flow", "DVF"])
+        nav_options = [t("dashboard"), t("pnl_statement"), t("balance_sheet"), t("cash_flow"), t("dvf")]
+        page = st.sidebar.radio(t("navigate"), nav_options)
         
         # Display selected page
-        if page == "Dashboard":
+        if page == t("dashboard"):
             self.display_dashboard()
-        elif page == "P&L Statement":
+        elif page == t("pnl_statement"):
             self.display_pnl_page()
-        elif page == "Balance Sheet":
+        elif page == t("balance_sheet"):
             self.display_bs_page()
-        elif page == "Cash Flow":
+        elif page == t("cash_flow"):
             self.display_cf_page()
-        elif page == "DVF":
+        elif page == t("dvf"):
             self.display_dvf_page()
