@@ -604,7 +604,7 @@ class ModelViewer:
                     st.warning(t("could_not_calculate_npv"))
 
     def display_pnl_page(self):
-        """P&L statement page"""
+        """P&L statement page with table and waterfall chart"""
         st.header(t("pnl_title"))
         
         if st.session_state.model is None:
@@ -612,36 +612,122 @@ class ModelViewer:
             return
         
         pnl = st.session_state.model.get_pnl()
+        cf = st.session_state.model.get_cash_flow()
         params = st.session_state.params
+        metrics = st.session_state.model.get_investment_metrics()
         
-        if pnl is not None:
-            pnl_yearly = pnl.groupby("Year").sum()
-            pnl_pivoted = pnl_yearly.T
-            pnl_pivoted.columns = [f"{t('year')} {col}" for col in pnl_pivoted.columns]
+        if pnl is None:
+            return
+        
+        # === TABLE ===
+        pnl_yearly = pnl.groupby("Year").sum()
+        pnl_pivoted = pnl_yearly.T
+        pnl_pivoted.columns = [f"{t('year')} {col}" for col in pnl_pivoted.columns]
+        
+        expense_rows = [
+            "Vacancy Loss", "Property Tax", "Condo Fees", "PNO Insurance",
+            "Maintenance", "Management Fees", "Airbnb Specific Costs",
+            "Total Operating Expenses", "Loan Interest", "Loan Insurance",
+            "Depreciation/Amortization", "Income Tax", "Social Contributions", "Total Taxes"
+        ]
+        
+        label_map = get_pnl_label_map()
+        pnl_formatted = self.format_financial_table(pnl_pivoted, expense_rows, label_map)
+        st.dataframe(self.style_financial_dataframe(pnl_formatted), use_container_width=True, height=600)
+        
+        st.markdown("---")
+        
+        # === WATERFALL: Investment Journey ===
+        st.subheader("📊 " + ("Parcours de l'Investissement" if get_language() == "fr" else "Investment Journey"))
+        
+        # Calculate breakeven
+        breakeven_month = self.visualizer.calculate_breakeven_month(cf)
+        holding_months = params.holding_period_years * 12
+        
+        # Build waterfall data
+        initial_equity = getattr(params, 'initial_equity', 0)
+        
+        if breakeven_month and breakeven_month < holding_months:
+            # Has breakeven: Purchase → Breakeven → Exit
+            cf_to_breakeven = cf.loc[1:breakeven_month, 'Net Change in Cash'].sum()
+            cf_breakeven_to_exit = cf.loc[breakeven_month+1:holding_months, 'Net Change in Cash'].sum()
+            exit_proceeds = metrics.get('net_exit_proceeds', 0) if metrics else 0
             
-            expense_rows = [
-                "Vacancy Loss", "Property Tax", "Condo Fees", "PNO Insurance",
-                "Maintenance", "Management Fees", "Airbnb Specific Costs",
-                "Total Operating Expenses", "Loan Interest", "Loan Insurance",
-                "Depreciation/Amortization", "Income Tax", "Social Contributions", "Total Taxes"
+            labels = [
+                "Apport initial" if get_language() == "fr" else "Initial Equity",
+                f"Cash-flows M1-M{breakeven_month}",
+                "Seuil rentabilité" if get_language() == "fr" else "Breakeven",
+                f"Cash-flows M{breakeven_month+1}-M{holding_months}",
+                "Produit de sortie" if get_language() == "fr" else "Exit Proceeds",
+                "Valeur finale" if get_language() == "fr" else "Final Value"
             ]
+            values = [
+                -initial_equity,
+                cf_to_breakeven,
+                0,  # Breakeven marker (relative measure will show cumulative)
+                cf_breakeven_to_exit,
+                exit_proceeds,
+                0  # Total
+            ]
+            measures = ["absolute", "relative", "total", "relative", "relative", "total"]
             
-            label_map = get_pnl_label_map()
+        else:
+            # No breakeven: Purchase → Exit
+            total_cf = cf['Net Change in Cash'].sum()
+            exit_proceeds = metrics.get('net_exit_proceeds', 0) if metrics else 0
             
-            pnl_formatted = self.format_financial_table(pnl_pivoted, expense_rows, label_map)
-            st.dataframe(self.style_financial_dataframe(pnl_formatted), use_container_width=True, height=700)
-            
-            col1, col2 = st.columns(2)
-            with col1:
-                cumulative_chart = self.visualizer.create_pnl_cumulative_chart(pnl)
-                if cumulative_chart:
-                    st.plotly_chart(cumulative_chart, use_container_width=True)
-            with col2:
-                sankey_y1 = self.visualizer.create_pnl_sankey(pnl)
-                if sankey_y1:
-                    st.subheader(t("year_1_flow"))
-                    st.plotly_chart(sankey_y1, use_container_width=True)
-
+            labels = [
+                "Apport initial" if get_language() == "fr" else "Initial Equity",
+                "Cash-flows opérationnels" if get_language() == "fr" else "Operating Cash Flows",
+                "Produit de sortie" if get_language() == "fr" else "Exit Proceeds",
+                "Valeur finale" if get_language() == "fr" else "Final Value"
+            ]
+            values = [-initial_equity, total_cf, exit_proceeds, 0]
+            measures = ["absolute", "relative", "relative", "total"]
+        
+        # Create waterfall
+        import plotly.graph_objects as go
+        
+        fig = go.Figure(go.Waterfall(
+            orientation="v",
+            measure=measures,
+            x=labels,
+            y=values,
+            connector={"line": {"color": "rgba(255,255,255,0.3)"}},
+            decreasing={"marker": {"color": "#ef4444"}},
+            increasing={"marker": {"color": "#22c55e"}},
+            totals={"marker": {"color": "#3b82f6"}},
+            textposition="outside",
+            text=[self._fmt_k_currency(abs(v)) if v != 0 else "" for v in values],
+            textfont={"size": 11}
+        ))
+        
+        fig.update_layout(
+            template="plotly_dark",
+            height=400,
+            margin=dict(l=40, r=40, t=40, b=60),
+            yaxis_title="€",
+            showlegend=False
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Summary metrics
+        final_value = -initial_equity + cf['Net Change in Cash'].sum() + (metrics.get('net_exit_proceeds', 0) if metrics else 0)
+        col1, col2, col3 = st.columns(3)
+        with col1:
+            st.metric("Apport initial" if get_language() == "fr" else "Initial Equity", self._fmt_k_currency(initial_equity))
+        with col2:
+            if breakeven_month:
+                years = breakeven_month // 12
+                months = breakeven_month % 12
+                be_text = f"{years}a {months}m" if get_language() == "fr" else f"{years}y {months}m"
+                st.metric("Seuil rentabilité" if get_language() == "fr" else "Breakeven", be_text)
+            else:
+                st.metric("Seuil rentabilité" if get_language() == "fr" else "Breakeven", "N/A")
+        with col3:
+            st.metric("Valeur finale" if get_language() == "fr" else "Final Value", self._fmt_k_currency(final_value))
+        
     def display_bs_page(self):
         """Balance Sheet page"""
         st.header(t("bs_title"))
@@ -663,7 +749,7 @@ class ModelViewer:
             st.dataframe(self.style_financial_dataframe(bs_pivoted_k), use_container_width=True, height=700)
 
     def display_cf_page(self):
-        """Cash Flow statement page"""
+        """Cash Flow statement page with cleaner table and charts"""
         st.header(t("cf_title"))
         
         if st.session_state.model is None:
@@ -673,23 +759,144 @@ class ModelViewer:
         cf = st.session_state.model.get_cash_flow()
         params = st.session_state.params
         
-        if cf is not None:
-            cf_yearly = cf.groupby("Year").sum()
+        if cf is None:
+            return
+        
+        # === CLEAN TABLE (remove zero columns) ===
+        cf_yearly = cf.groupby("Year").sum()
+        
+        # Get beginning/ending cash per year
+        for year in range(1, params.holding_period_years + 1):
+            year_data = cf[cf["Year"] == year]
+            cf_yearly.loc[year, "Beginning Cash Balance"] = year_data["Beginning Cash Balance"].iloc[0]
+            cf_yearly.loc[year, "Ending Cash Balance"] = year_data["Ending Cash Balance"].iloc[-1]
+        
+        cf_pivoted = cf_yearly.T
+        cf_pivoted.columns = [f"{t('year')} {col}" for col in cf_pivoted.columns]
+        
+        # Remove rows that are all zeros (except first year for one-time items)
+        rows_to_keep = []
+        for idx, row in cf_pivoted.iterrows():
+            if row.abs().sum() > 0.01:  # Keep if any non-zero value
+                rows_to_keep.append(idx)
+        cf_pivoted = cf_pivoted.loc[rows_to_keep]
+        
+        expense_rows = ["Loan Principal Repayment", "Acquisition Costs Outflow"]
+        label_map = get_cf_label_map()
+        
+        cf_formatted = self.format_financial_table(cf_pivoted, expense_rows, label_map)
+        st.dataframe(self.style_financial_dataframe(cf_formatted), use_container_width=True, height=500)
+        
+        st.markdown("---")
+        
+        # === MONTHLY CASH CURVE ===
+        st.subheader("📈 " + ("Évolution Trésorerie Mensuelle" if get_language() == "fr" else "Monthly Cash Position"))
+        
+        cash_curve = self.visualizer.create_monthly_cash_curve(cf)
+        if cash_curve:
+            st.plotly_chart(cash_curve, use_container_width=True)
+        
+        st.markdown("---")
+        
+        # === MONTHLY CASH FLOW BARS (Purchase → Breakeven → Exit) ===
+        st.subheader("📊 " + ("Cash-flows Mensuels" if get_language() == "fr" else "Monthly Cash Flows"))
+        
+        breakeven_month = self.visualizer.calculate_breakeven_month(cf)
+        holding_months = params.holding_period_years * 12
+        
+        import plotly.graph_objects as go
+        
+        months = list(range(1, holding_months + 1))
+        monthly_cf = cf['Net Change in Cash'].values
+        
+        # Color bars based on phase
+        if breakeven_month and breakeven_month < holding_months:
+            colors = []
+            for m in months:
+                if m <= breakeven_month:
+                    colors.append("#f59e0b")  # Orange: pre-breakeven
+                else:
+                    colors.append("#22c55e")  # Green: post-breakeven
             
-            for year in range(1, params.holding_period_years + 1):
-                year_data = cf[cf["Year"] == year]
-                cf_yearly.loc[year, "Beginning Cash Balance"] = year_data["Beginning Cash Balance"].iloc[0]
-                cf_yearly.loc[year, "Ending Cash Balance"] = year_data["Ending Cash Balance"].iloc[-1]
+            phase1_label = f"Pré-seuil (M1-M{breakeven_month})" if get_language() == "fr" else f"Pre-breakeven (M1-M{breakeven_month})"
+            phase2_label = f"Post-seuil (M{breakeven_month+1}-M{holding_months})" if get_language() == "fr" else f"Post-breakeven (M{breakeven_month+1}-M{holding_months})"
+        else:
+            colors = ["#3b82f6" if v >= 0 else "#ef4444" for v in monthly_cf]
+            phase1_label = None
+            phase2_label = None
+        
+        fig = go.Figure()
+        
+        fig.add_trace(go.Bar(
+            x=months,
+            y=monthly_cf,
+            marker_color=colors,
+            name="Cash-flow mensuel" if get_language() == "fr" else "Monthly Cash Flow"
+        ))
+        
+        # Add breakeven line if exists
+        if breakeven_month and breakeven_month < holding_months:
+            fig.add_vline(x=breakeven_month, line_dash="dash", line_color="#22c55e", line_width=2)
+            fig.add_annotation(
+                x=breakeven_month, y=max(monthly_cf) * 0.9,
+                text="Breakeven",
+                showarrow=False,
+                font=dict(color="#22c55e", size=12)
+            )
+        
+        fig.update_layout(
+            template="plotly_dark",
+            height=350,
+            margin=dict(l=40, r=20, t=40, b=40),
+            xaxis_title="Mois" if get_language() == "fr" else "Month",
+            yaxis_title="€",
+            showlegend=False
+        )
+        
+        st.plotly_chart(fig, use_container_width=True)
+        
+        # Phase summary metrics
+        if breakeven_month and breakeven_month < holding_months:
+            col1, col2, col3 = st.columns(3)
             
-            cf_pivoted = cf_yearly.T
-            cf_pivoted.columns = [f"{t('year')} {col}" for col in cf_pivoted.columns]
+            cf_phase1 = cf.loc[1:breakeven_month, 'Net Change in Cash'].sum()
+            cf_phase2 = cf.loc[breakeven_month+1:holding_months, 'Net Change in Cash'].sum()
+            avg_monthly_phase1 = cf_phase1 / breakeven_month
+            avg_monthly_phase2 = cf_phase2 / (holding_months - breakeven_month) if holding_months > breakeven_month else 0
             
-            expense_rows = ["Loan Principal Repayment", "Acquisition Costs Outflow"]
+            with col1:
+                st.metric(
+                    phase1_label,
+                    self._fmt_k_currency(cf_phase1),
+                    delta=f"Ø {fmt_currency(avg_monthly_phase1, 0)}/mois" if get_language() == "fr" else f"Avg {fmt_currency(avg_monthly_phase1, 0)}/mo"
+                )
+            with col2:
+                st.metric(
+                    phase2_label,
+                    self._fmt_k_currency(cf_phase2),
+                    delta=f"Ø {fmt_currency(avg_monthly_phase2, 0)}/mois" if get_language() == "fr" else f"Avg {fmt_currency(avg_monthly_phase2, 0)}/mo"
+                )
+            with col3:
+                total_cf = cf['Net Change in Cash'].sum()
+                st.metric(
+                    "Total cash-flows" if get_language() == "fr" else "Total Cash Flows",
+                    self._fmt_k_currency(total_cf)
+                )
+        else:
+            col1, col2 = st.columns(2)
+            total_cf = cf['Net Change in Cash'].sum()
+            avg_monthly = total_cf / holding_months
             
-            label_map = get_cf_label_map()
-            
-            cf_formatted = self.format_financial_table(cf_pivoted, expense_rows, label_map)
-            st.dataframe(self.style_financial_dataframe(cf_formatted), use_container_width=True, height=700)
+            with col1:
+                st.metric(
+                    "Total cash-flows" if get_language() == "fr" else "Total Cash Flows",
+                    self._fmt_k_currency(total_cf)
+                )
+            with col2:
+                st.metric(
+                    "Moyenne mensuelle" if get_language() == "fr" else "Monthly Average",
+                    fmt_currency(avg_monthly, 0)
+                )
 
     def export_to_excel(self, export_type: str = "Summary"):
         """Generate and return Excel file for download."""
@@ -720,7 +927,6 @@ class ModelViewer:
         """Display DVF map comparison for expert mode."""
         from ._17_dvf_comparison import DVFComparison, get_market_assessment_text, get_dvf_disclaimer
         from ._19_address_widget import create_dvf_map
-        import pydeck as pdk
         
         lang = get_language()
         
@@ -728,17 +934,20 @@ class ModelViewer:
         lon = getattr(params, 'property_lon', None)
         city = params.property_address_city
         
-        # Determine radius based on city density
-        dvf = DVFComparison()
-        if dvf.is_dense_city(city):
-            radius_km = 0.5  # 500m in dense cities
-        else:
-            radius_km = 2.0  # 2km otherwise
-        
         st.subheader("🗺️ " + ("Comparaison Marché Local" if lang == "fr" else "Local Market Comparison"))
         
+        # Radius slider (only show if we have coordinates)
         if lat and lon:
-            # Geo-based comparison with map
+            radius_km = st.slider(
+                "🎯 " + ("Rayon de recherche" if lang == "fr" else "Search radius"),
+                min_value=0.2,
+                max_value=10.0,
+                value=0.5,
+                step=0.1,
+                format="%.1f km"
+            )
+            
+            dvf = DVFComparison()
             comparison = dvf.get_market_comparison_geo(lat, lon, price, surface, radius_km)
             
             if comparison and comparison.get("transactions"):
@@ -776,9 +985,10 @@ class ModelViewer:
                 
                 st.caption(f"🔵 Similaire | 🟢 Moins cher | 🔴 Plus cher • Rayon: {radius_km*1000:.0f}m • " + get_dvf_disclaimer(lang))
             else:
-                st.info("📊 " + ("Pas assez de données dans cette zone" if lang == "fr" else "Not enough data in this area"))
+                st.info("📊 " + ("Pas assez de données dans cette zone. Essayez un rayon plus large." if lang == "fr" else "Not enough data in this area. Try a larger radius."))
         else:
-            # City-level only
+            # City-level fallback (no slider needed)
+            dvf = DVFComparison()
             comparison = dvf.get_market_comparison_simple(city, price, surface)
             if comparison:
                 col1, col2 = st.columns(2)
