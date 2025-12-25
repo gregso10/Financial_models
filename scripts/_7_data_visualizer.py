@@ -15,6 +15,158 @@ class DataVisualizer:
     def __init__(self):
         pass
 
+# ===== NEW DASHBOARD CHARTS =====
+        
+    def create_monthly_cash_curve(self, cf_df: Optional[pd.DataFrame]) -> Optional[go.Figure]:
+        """Creates monthly cumulative cash position chart with breakeven marker."""
+        if cf_df is None:
+            return None
+        
+        try:
+            cash_positions = cf_df['Ending Cash Balance'].values
+            months = list(range(1, len(cash_positions) + 1))
+            
+            # Find breakeven month
+            breakeven_month = None
+            was_negative = False
+            for i, cash in enumerate(cash_positions):
+                if cash < 0:
+                    was_negative = True
+                elif was_negative and cash >= 0:
+                    breakeven_month = i + 1
+                    break
+            
+            fig = go.Figure()
+            
+            # Main line with fill
+            fig.add_trace(go.Scatter(
+                x=months,
+                y=cash_positions,
+                mode='lines',
+                line=dict(color='#3b82f6', width=2),
+                fill='tozeroy',
+                fillcolor='rgba(59, 130, 246, 0.1)',
+                name='Cash Position'
+            ))
+            
+            # Zero line
+            fig.add_hline(y=0, line_dash="dash", line_color="white", opacity=0.5)
+            
+            # Breakeven marker
+            if breakeven_month:
+                fig.add_vline(x=breakeven_month, line_dash="dot", line_color="#22c55e", opacity=0.8)
+                fig.add_annotation(
+                    x=breakeven_month, y=cash_positions[breakeven_month-1],
+                    text=f"Breakeven M{breakeven_month}",
+                    showarrow=True, arrowhead=2, arrowcolor="#22c55e",
+                    font=dict(color="#22c55e", size=10)
+                )
+            
+            fig.update_layout(
+                title="Cumulative Cash Position",
+                template="plotly_dark",
+                height=300,
+                margin=dict(l=40, r=20, t=40, b=40),
+                xaxis_title="Month",
+                yaxis_title="€",
+                showlegend=False
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Error creating cash curve: {e}")
+            return None
+    
+    def calculate_breakeven_month(self, cf_df: Optional[pd.DataFrame]) -> Optional[int]:
+        """Returns the month when cumulative cash first becomes positive."""
+        if cf_df is None:
+            return None
+        
+        try:
+            cash_positions = cf_df['Ending Cash Balance'].values
+            was_negative = False
+            
+            for i, cash in enumerate(cash_positions):
+                if cash < 0:
+                    was_negative = True
+                elif was_negative and cash >= 0:
+                    return i + 1
+            
+            if not was_negative and len(cash_positions) > 0 and cash_positions[0] >= 0:
+                return 1
+            
+            return None
+            
+        except Exception:
+            return None
+    
+    def create_revenue_to_cash_waterfall(self, pnl_df: Optional[pd.DataFrame], 
+                                          cf_df: Optional[pd.DataFrame]) -> Optional[go.Figure]:
+        """Creates waterfall chart from Gross Revenue to Net Cash Flow."""
+        if pnl_df is None or cf_df is None:
+            return None
+        
+        try:
+            pnl_total = pnl_df.sum()
+            cf_total = cf_df.sum()
+            
+            goi = pnl_total.get("Gross Operating Income", 0)
+            opex = abs(pnl_total.get("Total Operating Expenses", 0))
+            interest = abs(pnl_total.get("Loan Interest", 0))
+            insurance = abs(pnl_total.get("Loan Insurance", 0))
+            taxes = abs(pnl_total.get("Total Taxes", 0))
+            depreciation = abs(pnl_total.get("Depreciation/Amortization", 0))
+            principal = abs(cf_total.get("Loan Principal Repayment", 0))
+            
+            cfo = cf_total.get("Cash Flow from Operations (CFO)", 0)
+            operating_net_cash = cfo - principal  # CFO minus principal payments
+            
+            labels = ["Revenue", "- OpEx", "- Interest", "- Taxes", "+ D&A", "- Principal", "Net Cash"]
+            measures = ["absolute", "relative", "relative", "relative", "relative", "relative", "total"]
+            # Expenses negative (decrease), D&A positive (add-back)
+            values = [goi, -opex, -(interest + insurance), -taxes, depreciation, -principal, operating_net_cash]
+            
+            # Text labels show absolute values
+            text_labels = [
+                f"€{goi/1000:.0f}k",
+                f"-€{opex/1000:.0f}k",
+                f"-€{(interest+insurance)/1000:.0f}k",
+                f"-€{taxes/1000:.0f}k",
+                f"+€{depreciation/1000:.0f}k",
+                f"-€{principal/1000:.0f}k",
+                f"€{operating_net_cash/1000:.0f}k"
+            ]
+            
+            fig = go.Figure(go.Waterfall(
+                orientation="v",
+                measure=measures,
+                x=labels,
+                y=values,
+                connector={"line": {"color": "rgba(255,255,255,0.3)"}},
+                decreasing={"marker": {"color": "#ef4444"}},
+                increasing={"marker": {"color": "#22c55e"}},
+                totals={"marker": {"color": "#3b82f6" if operating_net_cash >= 0 else "#ef4444"}},
+                textposition="outside",
+                text=text_labels,
+                textfont={"size": 9}
+            ))
+            
+            fig.update_layout(
+                title="Revenue to Cash Flow (Total Period)",
+                template="plotly_dark",
+                height=350,
+                margin=dict(l=40, r=20, t=50, b=60),
+                showlegend=False,
+                yaxis_title="€"
+            )
+            
+            return fig
+            
+        except Exception as e:
+            print(f"Error creating waterfall: {e}")
+            return None
+    
     # ===== DASHBOARD METHODS =====
     
     def create_consolidated_cf_table(self, pnl_df: Optional[pd.DataFrame], 

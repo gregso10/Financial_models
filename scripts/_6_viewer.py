@@ -9,6 +9,8 @@ from ._7_data_visualizer import DataVisualizer
 from ._12_excel_exporter import ExcelExporter
 from ._13_excel_exporter_full import ExcelExporterFull
 from ._14_translations import t, toggle_language, get_language, get_pnl_label_map, get_cf_label_map, fmt_number, fmt_currency, fmt_percent
+from ._19_address_widget import address_autocomplete, address_input_simple, create_dvf_map
+from ._17_dvf_comparison import DVFComparison
 
 st.set_page_config(layout="wide", page_title="Real Estate Financial Model")
 
@@ -33,6 +35,8 @@ class ModelViewer:
     def display_sidebar_inputs(self, defaults: ModelParameters) -> Dict[str, Any]:
         """Creates sidebar inputs with translations and improved UX."""
         
+        from ._19_address_widget import _fetch_suggestions, _geocode_address
+
         # Language toggle at top of sidebar
         st.sidebar.header(t("simulation_params"))
         
@@ -40,7 +44,55 @@ class ModelViewer:
 
         # --- Property & Acquisition ---
         st.sidebar.subheader(t("property_acquisition"))
-        inputs["property_address_city"] = st.sidebar.text_input(t("city"), value=defaults.property_address_city)
+
+        # ADDRESS AUTOCOMPLETE
+        address_key = "property_address"
+        if f"{address_key}_selected" not in st.session_state:
+            st.session_state[f"{address_key}_selected"] = None
+        
+        address_input = st.sidebar.text_input(
+            "📍 " + ("Adresse du bien" if get_language() == "fr" else "Property Address"),
+            key=address_key,
+            placeholder="Ex: 15 rue de la Paix, 75002 Paris",
+            help="Entrez l'adresse complète pour une comparaison marché précise" if get_language() == "fr" else "Enter full address for precise market comparison"
+        )
+        
+        # Show suggestions
+        if address_input and len(address_input) >= 5 and not st.session_state[f"{address_key}_selected"]:
+            suggestions = _fetch_suggestions(address_input)
+            if suggestions:
+                st.sidebar.caption("Suggestions:")
+                for i, sug in enumerate(suggestions[:4]):
+                    if st.sidebar.button(f"📍 {sug['label']}", key=f"sug_{i}", use_container_width=True):
+                        st.session_state[f"{address_key}_selected"] = sug
+                        st.rerun()
+        
+        # Display selected address
+        selected_address = st.session_state[f"{address_key}_selected"]
+        if selected_address:
+            st.sidebar.success(f"✅ {selected_address['label']}")
+            inputs["property_address"] = selected_address['label']
+            inputs["property_lat"] = selected_address['lat']
+            inputs["property_lon"] = selected_address['lon']
+            inputs["property_address_city"] = selected_address['city']
+            
+            col1, col2 = st.sidebar.columns([3, 1])
+            with col2:
+                if st.button("🔄", key="clear_addr", help="Changer"):
+                    st.session_state[f"{address_key}_selected"] = None
+                    st.rerun()
+        else:
+            # Fallback to city dropdown
+            inputs["property_address_city"] = st.sidebar.selectbox(
+                t("city"),
+                ["Paris", "Lyon", "Marseille", "Bordeaux", "Nantes", "Toulouse", "Nice", "Lille", "Strasbourg"],
+                index=0
+            )
+            inputs["property_lat"] = None
+            inputs["property_lon"] = None
+            inputs["property_address"] = None
+
+        
         inputs["property_price"] = st.sidebar.number_input(
             t("property_price"), 
             value=defaults.property_price, 
@@ -395,7 +447,7 @@ class ModelViewer:
             return f"{pct:.{decimals}f}%"
 
     def display_dashboard(self):
-        """Dashboard page with summary metrics and charts"""
+        """Dashboard page with summary metrics and charts - streamlined version"""
         st.header(t("investment_dashboard"))
         
         if st.session_state.model is None:
@@ -413,7 +465,7 @@ class ModelViewer:
         if metrics:
             st.subheader(t("investment_metrics"))
             
-            # Explanation expanders for key metrics
+            # Explanation expanders
             col_exp1, col_exp2 = st.columns(2)
             with col_exp1:
                 with st.expander("ℹ️ " + t("irr") + " - " + ("What is IRR?" if get_language() == "en" else "Qu'est-ce que le TRI ?")):
@@ -436,6 +488,7 @@ class ModelViewer:
                 em_display = f"{em_value:.2f}".replace(".", ",") + "x" if get_language() == "fr" else f"{em_value:.2f}x"
                 st.metric(t("equity_multiple"), em_display, help=t("equity_multiple_help"))
             
+            # Exit scenario expander (kept)
             with st.expander(t("exit_scenario_details")):
                 col_e1, col_e2, col_e3 = st.columns(3)
                 with col_e1:
@@ -450,29 +503,43 @@ class ModelViewer:
             
             st.markdown("---")
         
-        # === ROW 2: CONSOLIDATED CF + SANKEY CHARTS ===
+        # === ROW 2: CASH FLOW VISUALIZATION ===
         col1, col2 = st.columns([1, 1])
         
         with col1:
-            st.subheader(t("consolidated_cf"))
-            consolidated_cf = self.visualizer.create_consolidated_cf_table(pnl, cf, params)
-            if consolidated_cf is not None:
-                st.dataframe(self.style_financial_dataframe(consolidated_cf), use_container_width=True, height=600)
+            # Monthly cash curve with breakeven
+            st.subheader("📈 " + ("Évolution Trésorerie" if get_language() == "fr" else "Cash Position"))
+            
+            # Breakeven metric
+            breakeven = self.visualizer.calculate_breakeven_month(cf)
+            if breakeven:
+                years = breakeven // 12
+                months = breakeven % 12
+                if get_language() == "fr":
+                    be_text = f"Seuil de rentabilité: Mois {breakeven} ({years}a {months}m)"
+                else:
+                    be_text = f"Breakeven: Month {breakeven} ({years}y {months}m)"
+                st.success(f"✅ {be_text}")
+            else:
+                if cf is not None and cf['Ending Cash Balance'].iloc[-1] < 0:
+                    st.warning("⚠️ " + ("Pas de breakeven sur la période" if get_language() == "fr" else "No breakeven within period"))
+                else:
+                    st.success("✅ " + ("Positif dès le départ" if get_language() == "fr" else "Positive from start"))
+            
+            cash_curve = self.visualizer.create_monthly_cash_curve(cf)
+            if cash_curve:
+                st.plotly_chart(cash_curve, use_container_width=True)
         
         with col2:
-            st.subheader(t("pnl_sankey_total"))
-            pnl_sankey = self.visualizer.create_pnl_sankey_total(pnl)
-            if pnl_sankey:
-                st.plotly_chart(pnl_sankey, use_container_width=True)
-            
-            st.subheader(t("cf_sankey_total"))
-            cf_sankey = self.visualizer.create_cf_sankey_total(cf)
-            if cf_sankey:
-                st.plotly_chart(cf_sankey, use_container_width=True)
+            # Waterfall chart (replaces Sankey)
+            st.subheader("💧 " + ("Cascade Revenus → Cash (hors exit)" if get_language() == "fr" else "Revenue to Cash Waterfall (excl. exit)"))
+            waterfall = self.visualizer.create_revenue_to_cash_waterfall(pnl, cf)
+            if waterfall:
+                st.plotly_chart(waterfall, use_container_width=True)
         
         st.markdown("---")
         
-        # === ROW 3: LOAN ANALYSIS ===
+        # === ROW 3: LOAN ANALYSIS (kept) ===
         if loan_schedule is not None and len(loan_schedule) > 0:
             st.subheader(t("loan_analysis"))
             col_loan1, col_loan2 = st.columns([1, 1])
@@ -481,7 +548,6 @@ class ModelViewer:
                 st.markdown(f"**{t('amortization_yearly')}**")
                 loan_table = self.visualizer.format_loan_schedule_table(loan_schedule)
                 if loan_table is not None:
-                    # Locale-aware formatting for loan table
                     if get_language() == "fr":
                         fmt_str = lambda x: f"{x:,.1f}".replace(",", " ").replace(".", ",") if pd.notna(x) else "-"
                     else:
@@ -502,7 +568,7 @@ class ModelViewer:
         
         st.markdown("---")
         
-        # === ROW 4: INVESTMENT RETURN SENSITIVITY ===
+        # === ROW 4: INVESTMENT RETURN SENSITIVITY (kept) ===
         if st.session_state.model is None:
             return
         st.subheader(t("irr_sensitivity"))
@@ -620,75 +686,6 @@ class ModelViewer:
             cf_formatted = self.format_financial_table(cf_pivoted, expense_rows, label_map)
             st.dataframe(self.style_financial_dataframe(cf_formatted), use_container_width=True, height=700)
 
-    def display_dvf_page(self):
-        """Paris 3D price map from DVF database."""
-        st.header(t("dvf_title"))
-        
-        import pydeck as pdk
-        from ._10_dvf_analyzer_local import DVFAnalyzer
-        
-        @st.cache_data(ttl=3600)
-        def load_paris_data():
-            analyzer = DVFAnalyzer()
-            return analyzer.get_paris_data(limit=30000)
-        
-        try:
-            df = load_paris_data()
-            
-            if len(df) == 0:
-                st.warning(t("no_paris_data"))
-                return
-            
-            col1, col2, col3, col4 = st.columns(4)
-            col1.metric(t("transactions"), fmt_number(len(df)))
-            col2.metric(t("median_price_sqm"), fmt_currency(df['prix_m2'].median(), 0))
-            col3.metric(t("mean_price_sqm"), fmt_currency(df['prix_m2'].mean(), 0))
-            col4.metric(t("max_price_sqm"), fmt_currency(df['prix_m2'].max(), 0))
-            
-            import numpy as np
-            df = df.copy()
-            log_prices = np.log1p(df['prix_m2'])
-            df['normalized'] = (log_prices - log_prices.min()) / (log_prices.max() - log_prices.min())
-            
-            def get_color(v):
-                v = max(0, min(1, v))
-                if v < 0.25: return [0, int(v*4*255), 255, 180]
-                elif v < 0.5: return [0, 255, int(255-(v-0.25)*4*255), 180]
-                elif v < 0.75: return [int((v-0.5)*4*255), 255, 0, 180]
-                return [255, int(255-(v-0.75)*4*255), 0, 180]
-            
-            df['color'] = df['normalized'].apply(get_color)
-            
-            layer = pdk.Layer(
-                "ColumnLayer",
-                data=df,
-                get_position=["longitude", "latitude"],
-                get_elevation="prix_m2",
-                elevation_scale=0.5,
-                radius=30,
-                get_fill_color="color",
-                pickable=True,
-                extruded=True,
-            )
-            
-            view = pdk.ViewState(
-                latitude=48.8566, longitude=2.3522,
-                zoom=11, pitch=50, bearing=0
-            )
-            
-            deck = pdk.Deck(
-                layers=[layer],
-                initial_view_state=view,
-                map_style="mapbox://styles/mapbox/dark-v10",
-                tooltip={"html": "<b>€{prix_m2:.0f}/m²</b><br>{adresse_complete}"}
-            )
-            
-            st.pydeck_chart(deck, use_container_width=True)
-            
-        except Exception as e:
-            st.error(t("dvf_error", error=str(e)))
-            st.info(t("dvf_db_info"))
-
     def export_to_excel(self, export_type: str = "Summary"):
         """Generate and return Excel file for download."""
         if st.session_state.model is None:
@@ -713,6 +710,86 @@ class ModelViewer:
         
         return exporter.export()
     
+    # === ADD NEW METHOD FOR DVF MAP ON DASHBOARD ===
+    def display_dvf_map_comparison(self, params, price: float, surface: float):
+        """Display DVF map comparison for expert mode."""
+        from ._17_dvf_comparison import DVFComparison, get_market_assessment_text, get_dvf_disclaimer
+        from ._19_address_widget import create_dvf_map
+        import pydeck as pdk
+        
+        lang = get_language()
+        
+        lat = getattr(params, 'property_lat', None)
+        lon = getattr(params, 'property_lon', None)
+        city = params.property_address_city
+        
+        # Determine radius based on city density
+        dvf = DVFComparison()
+        if dvf.is_dense_city(city):
+            radius_km = 0.5  # 500m in dense cities
+        else:
+            radius_km = 2.0  # 2km otherwise
+        
+        st.subheader("🗺️ " + ("Comparaison Marché Local" if lang == "fr" else "Local Market Comparison"))
+        
+        if lat and lon:
+            # Geo-based comparison with map
+            comparison = dvf.get_market_comparison_geo(lat, lon, price, surface, radius_km)
+            
+            if comparison and comparison.get("transactions"):
+                # Stats row
+                col1, col2, col3, col4 = st.columns(4)
+                
+                assessment_text, assessment_color = get_market_assessment_text(comparison["assessment"], lang)
+                
+                with col1:
+                    st.metric("Votre prix/m²" if lang == "fr" else "Your €/m²", 
+                            f"€{comparison['user_price_sqm']:,.0f}")
+                with col2:
+                    diff = comparison['diff_vs_median_pct']
+                    st.metric("Médiane zone" if lang == "fr" else "Area median",
+                            f"€{comparison['median_price_sqm']:,.0f}",
+                            delta=f"{diff:+.1f}%",
+                            delta_color="inverse" if diff > 0 else "normal")
+                with col3:
+                    st.metric("Transactions", comparison['transaction_count'])
+                with col4:
+                    st.markdown(
+                        f'<div style="background:{assessment_color}; padding:8px; border-radius:4px; text-align:center;">'
+                        f'<b style="color:white;">{assessment_text}</b></div>',
+                        unsafe_allow_html=True
+                    )
+                
+                # Map
+                deck = create_dvf_map(
+                    lat, lon,
+                    comparison["transactions"],
+                    comparison["user_price_sqm"],
+                    radius_km
+                )
+                st.pydeck_chart(deck, use_container_width=True)
+                
+                st.caption(f"🔵 Similaire | 🟢 Moins cher | 🔴 Plus cher • Rayon: {radius_km*1000:.0f}m • " + get_dvf_disclaimer(lang))
+            else:
+                st.info("📊 " + ("Pas assez de données dans cette zone" if lang == "fr" else "Not enough data in this area"))
+        else:
+            # City-level only
+            comparison = dvf.get_market_comparison_simple(city, price, surface)
+            if comparison:
+                col1, col2 = st.columns(2)
+                with col1:
+                    st.metric("Votre prix/m²" if lang == "fr" else "Your €/m²",
+                            f"€{comparison['user_price_sqm']:,.0f}")
+                with col2:
+                    st.metric("Médiane " + city,
+                            f"€{comparison['median_price_sqm']:,.0f}",
+                            delta=f"{comparison['diff_vs_median_pct']:+.1f}%",
+                            delta_color="inverse" if comparison['diff_vs_median_pct'] > 0 else "normal")
+                
+                st.info("💡 " + ("Entrez une adresse précise pour voir la carte des transactions" if lang == "fr" else "Enter a precise address to see the transactions map"))
+            else:
+                st.info("📊 " + ("Données de marché non disponibles" if lang == "fr" else "Market data not available"))
+
     def run(self):
         """Main app orchestrator with Simple/Expert mode toggle"""
         st.title(t("app_title"))
@@ -797,7 +874,7 @@ class ModelViewer:
         
         # Navigation
         st.sidebar.markdown("---")
-        nav_options = [t("dashboard"), t("pnl_statement"), t("balance_sheet"), t("cash_flow"), t("dvf")]
+        nav_options = [t("dashboard"), t("pnl_statement"), t("balance_sheet"), t("cash_flow")]
         page = st.sidebar.radio(t("navigate"), nav_options)
         
         # Display selected page
@@ -809,5 +886,3 @@ class ModelViewer:
             self.display_bs_page()
         elif page == t("cash_flow"):
             self.display_cf_page()
-        elif page == t("dvf"):
-            self.display_dvf_page()
