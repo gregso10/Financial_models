@@ -214,7 +214,7 @@ def create_dvf_map(
                 latitude=user_lat, longitude=user_lon,
                 zoom=15, pitch=0
             ),
-            map_style="mapbox://styles/mapbox/dark-v10"
+            map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
         )
     
     # Color by price relative to user
@@ -230,6 +230,12 @@ def create_dvf_map(
     
     df['color'] = df['prix_m2'].apply(get_color)
     df['radius'] = 15
+    
+    # Pre-format tooltip values
+    df['prix_m2_fmt'] = df['prix_m2'].apply(lambda x: f"{x:,.0f}".replace(",", " "))
+    df['surface_fmt'] = df['surface_totale'].apply(lambda x: f"{x:.0f}")
+    df['prix_total_fmt'] = df['valeur_fonciere'].apply(lambda x: f"{x:,.0f}".replace(",", " "))
+    df['annee'] = df['mutation_year'].astype(int)
     
     # Transaction layer
     transaction_layer = pdk.Layer(
@@ -286,13 +292,16 @@ def create_dvf_map(
     )
     
     tooltip = {
-        "html": "<b>€{prix_m2:.0f}/m²</b><br/>{surface_totale:.0f}m²<br/>{adresse_complete}",
-        "style": {"backgroundColor": "#1f2937", "color": "white"}
+        "html": "<b>€{prix_m2_fmt}/m²</b><br/>"
+                "{surface_fmt} m² • €{prix_total_fmt}<br/>"
+                "{adresse_complete}<br/>"
+                "<i>Transaction: {annee}</i>",
+        "style": {"backgroundColor": "#1f2937", "color": "white", "fontSize": "12px"}
     }
     
     return pdk.Deck(
         layers=[circle_layer, transaction_layer, user_layer],
         initial_view_state=view_state,
-        map_style="mapbox://styles/mapbox/dark-v10",
+        map_style="https://basemaps.cartocdn.com/gl/dark-matter-gl-style/style.json",
         tooltip=tooltip
     )

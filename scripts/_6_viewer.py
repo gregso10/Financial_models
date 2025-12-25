@@ -539,7 +539,12 @@ class ModelViewer:
         
         st.markdown("---")
         
-        # === ROW 3: LOAN ANALYSIS (kept) ===
+        # === ROW 3: DVF MARKET COMPARISON ===
+        if params.property_price > 0 and params.property_size_sqm > 0:
+            self.display_dvf_map_comparison(params, params.property_price, params.property_size_sqm)
+            st.markdown("---")
+
+        # === ROW 4: LOAN ANALYSIS (kept) ===
         if loan_schedule is not None and len(loan_schedule) > 0:
             st.subheader(t("loan_analysis"))
             col_loan1, col_loan2 = st.columns([1, 1])
@@ -568,7 +573,7 @@ class ModelViewer:
         
         st.markdown("---")
         
-        # === ROW 4: INVESTMENT RETURN SENSITIVITY (kept) ===
+        # === ROW 5: INVESTMENT RETURN SENSITIVITY (kept) ===
         if st.session_state.model is None:
             return
         st.subheader(t("irr_sensitivity"))
@@ -835,8 +840,16 @@ class ModelViewer:
         user_widget_values = self.display_sidebar_inputs(default_params)
         selected_lease = user_widget_values.pop("lease_type_choice", "furnished_1yr")
         
+        property_lat = user_widget_values.pop("property_lat", None)
+        property_lon = user_widget_values.pop("property_lon", None)
+        property_address = user_widget_values.pop("property_address", None)
+
         try:
             current_params = ModelParameters(**user_widget_values)
+            # Store geo data on params for DVF comparison (optional)
+            current_params.property_lat = property_lat
+            current_params.property_lon = property_lon
+            current_params.property_address = property_address
         except TypeError as e:
             st.error(t("error_creating_params", error=str(e)))
             st.stop()
