@@ -13,7 +13,7 @@ from ._1_model_params import ModelParameters
 from ._0_financial_model import FinancialModel
 from ._14_translations import t, get_language, fmt_currency, fmt_number
 from ._15_city_defaults import get_location_defaults, get_selectable_locations, FIXED_DEFAULTS
-from ._17_dvf_comparison import DVFComparison, generate_profitability_alerts, get_market_assessment_text
+from ._17_dvf_comparison import DVFComparison, generate_profitability_alerts, get_market_assessment_text, get_dvf_disclaimer
 from ._18_fiscal_advisor import FiscalAdvisor, LeaseType, get_regime_recommendation_text, get_lmp_alert
 
 
@@ -25,12 +25,7 @@ class SimpleViewer:
             st.session_state.simple_results = None
     
     def get_score_color(self, irr: float, risk_free: float, discount: float) -> Tuple[str, str, str]:
-        """
-        Returns (color, emoji, label) based on IRR vs thresholds.
-        🟢 IRR > discount_rate : Good investment
-        🟡 risk_free < IRR ≤ discount : Acceptable
-        🔴 IRR ≤ risk_free : Poor
-        """
+        """Returns (color, emoji, label) based on IRR vs thresholds."""
         if irr > discount:
             if get_language() == "fr":
                 return "#22c55e", "🟢", "Bon investissement"
@@ -78,7 +73,6 @@ class SimpleViewer:
         """Visual gauge showing investment quality."""
         color, emoji, label = self.get_score_color(irr, risk_free, discount)
         
-        # Gauge from 0% to 15%
         fig = go.Figure(go.Indicator(
             mode="gauge+number",
             value=irr * 100,
@@ -109,14 +103,13 @@ class SimpleViewer:
         return fig
     
     def display_dvf_comparison(self, city: str, price: float, surface: float):
-        """Display DVF market comparison widget."""
+        """Display DVF market comparison widget with disclaimer."""
         lang = get_language()
         
         dvf = DVFComparison()
         comparison = dvf.get_market_comparison(city, price, surface)
         
         if comparison is None:
-            # No data available - show placeholder
             st.info("📊 " + ("Données de marché non disponibles pour cette zone" if lang == "fr" else "Market data not available for this area"))
             return
         
@@ -157,6 +150,15 @@ class SimpleViewer:
             unsafe_allow_html=True
         )
         
+        # District breakdown (500m radius)
+        coords = dvf.get_city_coordinates(city)
+        if coords:
+            district_data = dvf.get_nearby_districts_comparison(city, coords[0], coords[1], radius_km=0.5)
+            if district_data:
+                st.markdown("**" + ("Prix/m² par distance (rayon 500m)" if lang == "fr" else "Price/sqm by distance (500m radius)") + "**")
+                for band in district_data:
+                    st.caption(f"• {band['band']}: {fmt_currency(band['median_price_sqm'], 0)}/m² ({band['count']} transactions)")
+        
         # Stats details
         with st.expander("📈 " + ("Détails du marché" if lang == "fr" else "Market details")):
             st.write(f"• " + ("Transactions similaires" if lang == "fr" else "Similar transactions") + f": {comparison['transaction_count']}")
@@ -167,6 +169,10 @@ class SimpleViewer:
             st.write(f"• " + ("Votre percentile" if lang == "fr" else "Your percentile") + f": {comparison['user_percentile']:.0f}%")
             years_str = ", ".join(map(str, comparison["years_covered"][-3:]))
             st.caption(f"📅 " + ("Années" if lang == "fr" else "Years") + f": {years_str}")
+            
+            # Disclaimer
+            st.markdown("---")
+            st.markdown(get_dvf_disclaimer(lang), unsafe_allow_html=True)
     
     def display_profitability_alerts(self, metrics: dict, params):
         """Display profitability alerts."""
@@ -217,13 +223,11 @@ class SimpleViewer:
         
         st.markdown("### 📋 " + ("Optimisation Fiscale" if lang == "fr" else "Tax Optimization"))
         
-        # Get annual figures from model
         pnl_df = model.get_pnl()
         pnl_year1 = pnl_df[pnl_df["Year"] == 1]
         
         gross_revenue = pnl_year1["Gross Operating Income"].sum()
         
-        # Deductible expenses (excluding depreciation)
         deductible = (
             pnl_year1["Property Tax"].sum() +
             pnl_year1["Condo Fees"].sum() +
@@ -233,14 +237,12 @@ class SimpleViewer:
             pnl_year1["Loan Interest"].sum() +
             pnl_year1["Loan Insurance"].sum()
         )
-        deductible = abs(deductible)  # Make positive
+        deductible = abs(deductible)
         
         depreciation = abs(pnl_year1["Depreciation/Amortization"].sum())
         
-        # Create advisor
         advisor = FiscalAdvisor(tmi=params.personal_income_tax_bracket)
         
-        # Compare regimes (assuming furnished)
         comparison = advisor.compare_regimes(
             gross_revenue=gross_revenue,
             deductible_expenses=deductible,
@@ -249,10 +251,8 @@ class SimpleViewer:
             holding_years=params.holding_period_years
         )
         
-        # Get recommendation text
         rec = get_regime_recommendation_text(comparison, lang)
         
-        # Recommendation banner
         is_reel = "Réel" in rec["recommended"] or "Reel" in rec["recommended"]
         rec_color = "#22c55e" if is_reel else "#3b82f6"
         
@@ -267,7 +267,6 @@ class SimpleViewer:
         
         st.markdown("")
         
-        # Comparison table
         col1, col2 = st.columns(2)
         
         with col1:
@@ -284,7 +283,6 @@ class SimpleViewer:
             st.write(f"• " + ("Impôt total" if lang == "fr" else "Total tax") + f": {fmt_currency(reel.total_tax, 0)}")
             st.write(f"• " + ("Taux effectif" if lang == "fr" else "Effective rate") + f": {reel.effective_rate:.1f}%")
         
-        # Savings highlight
         if rec["annual_savings"] > 100:
             savings_text = (
                 f"💰 Économie: {fmt_currency(rec['annual_savings'], 0)}/an "
@@ -295,7 +293,6 @@ class SimpleViewer:
             )
             st.success(savings_text)
         
-        # LMP warning if applicable
         lmp_status = advisor.check_lmp_status(gross_revenue)
         lmp_alert = get_lmp_alert(lmp_status, lang)
         
@@ -305,7 +302,6 @@ class SimpleViewer:
             else:
                 st.info(f"{lmp_alert['icon']} **{lmp_alert['title']}**: {lmp_alert['message']}")
         
-        # Pro teaser
         with st.expander("🔒 " + ("Fonctionnalités Pro" if lang == "fr" else "Pro Features")):
             st.markdown(
                 ("**Passez en Pro pour accéder à:**\n"
@@ -327,7 +323,6 @@ class SimpleViewer:
         location = inputs["location"]
         loc_defaults = get_location_defaults(location)
         
-        # Calculate derived values
         sqm = inputs["surface_sqm"]
         
         params = ModelParameters(
@@ -335,17 +330,14 @@ class SimpleViewer:
             property_price=inputs["price"],
             property_size_sqm=sqm,
             
-            # From location defaults
-            agency_fees_percentage=0.0,  # Assume price is net
+            agency_fees_percentage=0.0,
             notary_fees_percentage_estimate=loc_defaults["notary_pct"],
             
-            # Financing
             loan_percentage=(inputs["price"] - inputs["apport"]) / inputs["price"] if inputs["price"] > 0 else 0.8,
             loan_interest_rate=inputs["loan_rate"],
             loan_duration_years=FIXED_DEFAULTS["loan_duration_years"],
             loan_insurance_rate=FIXED_DEFAULTS["loan_insurance_rate"],
             
-            # Rental - use furnished defaults
             rental_assumptions={
                 "furnished_1yr": {
                     "monthly_rent_sqm": inputs["monthly_rent"] / sqm if sqm > 0 else 0,
@@ -358,14 +350,13 @@ class SimpleViewer:
                     "rent_growth_rate": FIXED_DEFAULTS["rent_growth"],
                 },
                 "airbnb": {
-                    "daily_rate": inputs["monthly_rent"] / 20,  # Rough estimate
+                    "daily_rate": inputs["monthly_rent"] / 20,
                     "occupancy_rate": 0.7,
                     "rent_growth_rate": FIXED_DEFAULTS["rent_growth"],
                     "monthly_seasonality": [1.0] * 12,
                 },
             },
             
-            # Operating expenses from defaults
             property_tax_yearly=loc_defaults["property_tax_per_sqm"] * sqm,
             condo_fees_monthly=loc_defaults["condo_fees_per_sqm"] * sqm,
             pno_insurance_yearly=loc_defaults["pno_insurance"],
@@ -377,22 +368,18 @@ class SimpleViewer:
             },
             expenses_growth_rate=FIXED_DEFAULTS["expenses_growth"],
             
-            # Fiscal
             fiscal_regime="LMNP Réel",
             personal_income_tax_bracket=FIXED_DEFAULTS["tmi"],
             social_contributions_rate=FIXED_DEFAULTS["social_contributions"],
             
-            # Exit
             holding_period_years=FIXED_DEFAULTS["holding_period_years"],
             property_value_growth_rate=loc_defaults["price_growth"],
             exit_selling_fees_percentage=0.05,
             
-            # Analysis
             risk_free_rate=FIXED_DEFAULTS["risk_free_rate"],
             discount_rate=FIXED_DEFAULTS["discount_rate"],
             
-            # Furnishing estimate
-            furnishing_costs=sqm * 200,  # ~200€/m² for basic furnishing
+            furnishing_costs=sqm * 200,
             initial_renovation_costs=0,
         )
         
@@ -402,7 +389,6 @@ class SimpleViewer:
         """Render simplified interface."""
         lang = get_language()
         
-        # Title
         if lang == "fr":
             st.header("🏠 Simulateur Investissement Locatif")
             st.caption("Entrez les informations clés pour évaluer votre investissement")
@@ -410,12 +396,10 @@ class SimpleViewer:
             st.header("🏠 Rental Investment Simulator")
             st.caption("Enter key information to evaluate your investment")
         
-        # === INPUT FORM ===
         col_input, col_results = st.columns([1, 2])
         
         with col_input:
             with st.form("simple_form"):
-                # Location
                 locations = get_selectable_locations()
                 location = st.selectbox(
                     "📍 " + (t("city") if lang == "en" else "Localisation"),
@@ -423,10 +407,8 @@ class SimpleViewer:
                     index=locations.index("Lyon") if "Lyon" in locations else 0
                 )
                 
-                # Get defaults for selected location
                 loc_defaults = get_location_defaults(location)
                 
-                # Price
                 price = st.number_input(
                     "💰 " + ("Prix d'achat (€)" if lang == "fr" else "Purchase Price (€)"),
                     value=250000,
@@ -434,7 +416,6 @@ class SimpleViewer:
                     format="%d"
                 )
                 
-                # Surface
                 surface = st.number_input(
                     "📐 " + ("Surface (m²)" if lang == "fr" else "Surface (sqm)"),
                     value=45,
@@ -442,7 +423,6 @@ class SimpleViewer:
                     format="%d"
                 )
                 
-                # Suggested rent based on location
                 suggested_rent = int(loc_defaults["rent_per_sqm_furnished"] * surface)
                 rent = st.number_input(
                     "🏷️ " + ("Loyer mensuel (€)" if lang == "fr" else "Monthly Rent (€)"),
@@ -452,7 +432,6 @@ class SimpleViewer:
                     help=f"Suggestion: {fmt_currency(suggested_rent)}" if lang == "en" else f"Suggestion: {fmt_currency(suggested_rent)}"
                 )
                 
-                # Down payment
                 apport = st.number_input(
                     "💳 " + ("Apport personnel (€)" if lang == "fr" else "Down Payment (€)"),
                     value=50000,
@@ -460,7 +439,6 @@ class SimpleViewer:
                     format="%d"
                 )
                 
-                # Loan rate
                 loan_rate = st.slider(
                     "📊 " + ("Taux d'emprunt (%)" if lang == "fr" else "Loan Rate (%)"),
                     min_value=1.0,
@@ -470,7 +448,6 @@ class SimpleViewer:
                     format="%.1f%%"
                 ) / 100
                 
-                # Submit
                 submitted = st.form_submit_button(
                     "🔍 " + ("Analyser" if lang == "fr" else "Analyze"),
                     use_container_width=True,
@@ -487,7 +464,6 @@ class SimpleViewer:
                         "loan_rate": loan_rate,
                     }
                     
-                    # Build params and run model
                     params = self.build_params_from_simple_inputs(inputs)
                     model = FinancialModel(params)
                     model.run_simulation("furnished_1yr")
@@ -498,7 +474,6 @@ class SimpleViewer:
                         "inputs": inputs,
                     }
         
-        # === RESULTS ===
         with col_results:
             if st.session_state.simple_results is None:
                 st.info("👈 " + ("Remplissez le formulaire et cliquez Analyser" if lang == "fr" else "Fill the form and click Analyze"))
@@ -514,7 +489,6 @@ class SimpleViewer:
                 st.error("Erreur de calcul" if lang == "fr" else "Calculation error")
                 return
             
-            # Key metrics
             irr = metrics.get('irr', 0)
             npv = metrics.get('npv', 0)
             monthly_cf = cf_df["Net Change in Cash"].sum() / (params.holding_period_years * 12)
@@ -524,7 +498,6 @@ class SimpleViewer:
             discount = FIXED_DEFAULTS["discount_rate"]
             color, emoji, label = self.get_score_color(irr, risk_free, discount)
             
-            # === ROW 1: Score + Main Metric ===
             st.markdown(f"### {emoji} {label}")
             
             col_m1, col_m2, col_m3 = st.columns(3)
@@ -539,7 +512,6 @@ class SimpleViewer:
             
             with col_m2:
                 cf_display = f"{monthly_cf:+,.0f}".replace(",", " ") + " €" if lang == "fr" else f"€{monthly_cf:+,.0f}"
-                delta_color = "normal" if monthly_cf >= 0 else "inverse"
                 st.metric(
                     "Cash-flow mensuel" if lang == "fr" else "Monthly Cash Flow",
                     cf_display,
@@ -554,7 +526,6 @@ class SimpleViewer:
             
             st.markdown("---")
             
-            # === ROW 2: Alerts + DVF Comparison ===
             col_alerts, col_dvf = st.columns([1, 1])
             
             with col_alerts:
@@ -569,7 +540,6 @@ class SimpleViewer:
             
             st.markdown("---")
             
-            # === ROW 3: Gauge + Chart ===
             col_g, col_c = st.columns([1, 2])
             
             with col_g:
@@ -582,12 +552,10 @@ class SimpleViewer:
             
             st.markdown("---")
             
-            # === ROW 4: Fiscal Optimization ===
             self.display_fiscal_comparison(params, model)
             
             st.markdown("---")
             
-            # === ROW 5: Details expander ===
             with st.expander("📋 " + ("Détails du calcul" if lang == "fr" else "Calculation Details")):
                 col_d1, col_d2 = st.columns(2)
                 

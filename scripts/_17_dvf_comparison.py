@@ -8,7 +8,7 @@ import sqlite3
 import pandas as pd
 import numpy as np
 from pathlib import Path
-from typing import Dict, Optional, Tuple
+from typing import Dict, Optional, Tuple, List
 from math import radians, sin, cos, sqrt, atan2
 
 
@@ -16,6 +16,13 @@ class DVFComparison:
     """
     Compare a property against local DVF transactions.
     """
+    
+    # Minimum/Maximum realistic price per sqm (filter out data errors)
+    MIN_PRICE_SQM = 200
+    MAX_PRICE_SQM = 25000
+    
+    # DVF source info
+    DVF_SOURCE_URL = "https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/"
     
     def __init__(self, db_path: str = "dvf_processed.db"):
         self.db_path = Path(db_path)
@@ -52,7 +59,6 @@ class DVFComparison:
     
     def get_city_coordinates(self, city: str) -> Optional[Tuple[float, float]]:
         """Get approximate coordinates for a city."""
-        # Major cities coordinates (fallback if no geocoding)
         CITY_COORDS = {
             "Paris": (48.8566, 2.3522),
             "Lyon": (45.7640, 4.8357),
@@ -67,10 +73,9 @@ class DVFComparison:
         return CITY_COORDS.get(city)
     
     def get_adaptive_radius(self, city: str) -> float:
-        # Paris, Lyon, Marseille demandent une précision chirurgicale
         dense_cities = ["Paris", "Lyon", "Marseille", "Bordeaux", "Nice"]
         if any(c in city for c in dense_cities):
-            return 0.5 # 500m max en zone dense
+            return 0.5  # 500m max in dense areas
         return 2.0
 
     def get_market_comparison(
@@ -80,21 +85,11 @@ class DVFComparison:
         surface_sqm: float,
         radius_km: float = 2.0,
         months_back: int = 12,
-        surface_tolerance: float = 0.15,  # ±30%
+        surface_tolerance: float = 0.15,
     ) -> Optional[Dict]:
         """
         Compare property against local market.
-        
-        Args:
-            city: City name
-            price: Property price in €
-            surface_sqm: Property surface in m²
-            radius_km: Search radius in km
-            months_back: How many months of history
-            surface_tolerance: Surface range (0.15 = ±15%)
-        
-        Returns:
-            Dict with market insights or None if no data
+        Filters out unrealistic values (< 200€/m² or > 25000€/m²).
         """
         if not self._connect():
             return None
@@ -102,26 +97,23 @@ class DVFComparison:
         try:
             user_price_sqm = price / surface_sqm if surface_sqm > 0 else 0
             
-            # Get city coordinates
             coords = self.get_city_coordinates(city)
             if not coords:
-                # Try to get from DB
                 coords = self._get_coords_from_db(city)
             
             if not coords:
                 return self._get_city_only_comparison(city, user_price_sqm, surface_sqm, surface_tolerance)
             
             lat, lon = coords
-            
             radius_km = self.get_adaptive_radius(city)
 
-            # Bounding box for faster SQL (approximate)
-            lat_delta = radius_km / 111  # ~111km per degree latitude
+            lat_delta = radius_km / 111
             lon_delta = radius_km / (111 * cos(radians(lat)))
             
             min_surface = surface_sqm * (1 - surface_tolerance)
             max_surface = surface_sqm * (1 + surface_tolerance)
             
+            # Query with price filters
             query = """
             SELECT 
                 m.valeur_fonciere,
@@ -136,8 +128,8 @@ class DVFComparison:
             WHERE g.latitude BETWEEN ? AND ?
               AND g.longitude BETWEEN ? AND ?
               AND m.surface_totale BETWEEN ? AND ?
-              AND m.prix_m2 > 0
-              AND m.prix_m2 < 25000
+              AND m.prix_m2 >= ?
+              AND m.prix_m2 <= ?
             ORDER BY m.mutation_year DESC
             LIMIT 500
             """
@@ -148,7 +140,8 @@ class DVFComparison:
                 params=(
                     lat - lat_delta, lat + lat_delta,
                     lon - lon_delta, lon + lon_delta,
-                    min_surface, max_surface
+                    min_surface, max_surface,
+                    self.MIN_PRICE_SQM, self.MAX_PRICE_SQM
                 )
             )
             
@@ -169,6 +162,89 @@ class DVFComparison:
             
         except Exception as e:
             print(f"DVF comparison error: {e}")
+            return None
+        finally:
+            self._close()
+    
+    def get_nearby_districts_comparison(
+        self,
+        city: str,
+        lat: float,
+        lon: float,
+        radius_km: float = 0.5,
+    ) -> Optional[List[Dict]]:
+        """
+        Get price/m² breakdown for nearby areas within radius.
+        Groups by approximate district/zone.
+        """
+        if not self._connect():
+            return None
+        
+        try:
+            lat_delta = radius_km / 111
+            lon_delta = radius_km / (111 * cos(radians(lat)))
+            
+            query = """
+            SELECT 
+                m.prix_m2,
+                g.latitude,
+                g.longitude
+            FROM mutations_agg m
+            JOIN geocoded_addresses g ON m.adresse_complete = g.adresse_complete
+            WHERE g.latitude BETWEEN ? AND ?
+              AND g.longitude BETWEEN ? AND ?
+              AND m.prix_m2 >= ?
+              AND m.prix_m2 <= ?
+            ORDER BY m.mutation_year DESC
+            LIMIT 1000
+            """
+            
+            df = pd.read_sql_query(
+                query,
+                self.conn,
+                params=(
+                    lat - lat_delta, lat + lat_delta,
+                    lon - lon_delta, lon + lon_delta,
+                    self.MIN_PRICE_SQM, self.MAX_PRICE_SQM
+                )
+            )
+            
+            if len(df) == 0:
+                return None
+            
+            # Calculate distance from center
+            df['distance_km'] = df.apply(
+                lambda r: self.haversine_distance(lat, lon, r['latitude'], r['longitude']),
+                axis=1
+            )
+            df = df[df['distance_km'] <= radius_km]
+            
+            if len(df) == 0:
+                return None
+            
+            # Group by distance bands (0-200m, 200-400m, 400-500m)
+            bands = [
+                (0, 0.2, "0-200m"),
+                (0.2, 0.4, "200-400m"),
+                (0.4, 0.5, "400-500m"),
+            ]
+            
+            results = []
+            for min_d, max_d, label in bands:
+                band_df = df[(df['distance_km'] >= min_d) & (df['distance_km'] < max_d)]
+                if len(band_df) >= 3:  # Minimum 3 transactions for stats
+                    results.append({
+                        "band": label,
+                        "count": len(band_df),
+                        "median_price_sqm": band_df['prix_m2'].median(),
+                        "min_price_sqm": band_df['prix_m2'].min(),
+                        "max_price_sqm": band_df['prix_m2'].max(),
+                    })
+            
+            return results if results else None
+            
+        except Exception as e:
+            print(f"District comparison error: {e}")
             return None
         finally:
             self._close()
@@ -212,8 +288,8 @@ class DVFComparison:
             FROM mutations_agg m
             WHERE m.adresse_complete LIKE ?
               AND m.surface_totale BETWEEN ? AND ?
-              AND m.prix_m2 > 0
-              AND m.prix_m2 < 25000
+              AND m.prix_m2 >= ?
+              AND m.prix_m2 <= ?
             ORDER BY m.mutation_year DESC
             LIMIT 200
             """
@@ -221,7 +297,8 @@ class DVFComparison:
             df = pd.read_sql_query(
                 query,
                 self.conn,
-                params=(f"%{city}%", min_surface, max_surface)
+                params=(f"%{city}%", min_surface, max_surface, 
+                       self.MIN_PRICE_SQM, self.MAX_PRICE_SQM)
             )
             
             if len(df) == 0:
@@ -247,16 +324,12 @@ class DVFComparison:
         q25 = df['prix_m2'].quantile(0.25)
         q75 = df['prix_m2'].quantile(0.75)
         
-        # User's percentile
         percentile = (df['prix_m2'] < user_price_sqm).mean() * 100
-        
-        # Difference vs median
         diff_vs_median = ((user_price_sqm - median_price_sqm) / median_price_sqm) * 100 if median_price_sqm > 0 else 0
         
-        # Price assessment
         if user_price_sqm <= q25:
             assessment = "below_market"
-            assessment_score = 1  # Good for buyer
+            assessment_score = 1
         elif user_price_sqm <= median_price_sqm:
             assessment = "fair"
             assessment_score = 2
@@ -281,7 +354,8 @@ class DVFComparison:
             "diff_vs_median_pct": diff_vs_median,
             "assessment": assessment,
             "assessment_score": assessment_score,
-            "years_covered": sorted(df['mutation_year'].unique().tolist()),
+            "years_covered": sorted(df['mutation_year'].unique().tolist()) if 'mutation_year' in df.columns else [],
+            "source_url": self.DVF_SOURCE_URL,
         }
 
 
@@ -296,15 +370,9 @@ def generate_profitability_alerts(
     livret_a_rate: float = 0.03,
     lang: str = "fr"
 ) -> list:
-    """
-    Generate list of profitability alerts.
-    
-    Returns:
-        List of dicts: {"type": "success|warning|error", "message": str}
-    """
+    """Generate list of profitability alerts."""
     alerts = []
     
-    # 1. Cash-flow check
     if monthly_cashflow >= 0:
         msg = "Cash-flow positif dès le départ" if lang == "fr" else "Positive cash flow from day 1"
         alerts.append({"type": "success", "icon": "✅", "message": msg})
@@ -315,7 +383,6 @@ def generate_profitability_alerts(
         msg = f"Cash-flow négatif: {monthly_cashflow:.0f}€/mois" if lang == "fr" else f"Negative cash flow: €{monthly_cashflow:.0f}/month"
         alerts.append({"type": "error", "icon": "🔴", "message": msg})
     
-    # 2. IRR vs benchmarks
     if irr > 0.08:
         msg = "Rendement excellent (>8%)" if lang == "fr" else "Excellent return (>8%)"
         alerts.append({"type": "success", "icon": "🌟", "message": msg})
@@ -329,7 +396,6 @@ def generate_profitability_alerts(
         msg = f"Rendement inférieur au Livret A ({livret_a_rate*100:.0f}%)" if lang == "fr" else f"Return below Livret A ({livret_a_rate*100:.0f}%)"
         alerts.append({"type": "error", "icon": "🔴", "message": msg})
     
-    # 3. Equity multiple
     if equity_multiple >= 2.0:
         msg = "Capital doublé sur la période" if lang == "fr" else "Capital doubled over period"
         alerts.append({"type": "success", "icon": "💰", "message": msg})
@@ -340,7 +406,6 @@ def generate_profitability_alerts(
         msg = "Perte en capital probable" if lang == "fr" else "Likely capital loss"
         alerts.append({"type": "error", "icon": "📉", "message": msg})
     
-    # 4. Cash-on-cash Year 1
     if cash_on_cash >= 0.05:
         msg = f"Rendement cash Y1: {cash_on_cash*100:.1f}%" if lang == "fr" else f"Cash return Y1: {cash_on_cash*100:.1f}%"
         alerts.append({"type": "success", "icon": "💵", "message": msg})
@@ -352,12 +417,7 @@ def generate_profitability_alerts(
 
 
 def get_market_assessment_text(assessment: str, lang: str = "fr") -> Tuple[str, str]:
-    """
-    Get human-readable assessment and color.
-    
-    Returns:
-        (text, color)
-    """
+    """Get human-readable assessment and color."""
     assessments = {
         "below_market": {
             "fr": ("En dessous du marché", "#22c55e"),
@@ -379,3 +439,25 @@ def get_market_assessment_text(assessment: str, lang: str = "fr") -> Tuple[str, 
     
     data = assessments.get(assessment, assessments["fair"])
     return data.get(lang, data["en"])
+
+
+def get_dvf_disclaimer(lang: str = "fr") -> str:
+    """Get DVF methodology disclaimer."""
+    if lang == "fr":
+        return (
+            "📋 **Source**: Base DVF (Demandes de Valeurs Foncières) - "
+            "[data.gouv.fr](https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/)\n\n"
+            "⚠️ **Méthodologie**: Les prix/m² sont calculés sur la surface totale de la transaction "
+            "(qui peut inclure caves, parkings, etc.) et non la surface Loi Carrez, "
+            "souvent incomplète dans la base DVF. Cela peut sous-estimer les prix réels. "
+            "Les valeurs aberrantes (<200€/m² ou >25 000€/m²) ont été exclues."
+        )
+    else:
+        return (
+            "📋 **Source**: DVF Database (Property Value Requests) - "
+            "[data.gouv.fr](https://www.data.gouv.fr/fr/datasets/demandes-de-valeurs-foncieres/)\n\n"
+            "⚠️ **Methodology**: Price/sqm is calculated using total transaction area "
+            "(which may include cellars, parking, etc.) rather than Loi Carrez surface, "
+            "often incomplete in DVF data. This may underestimate actual prices. "
+            "Outliers (<€200/sqm or >€25,000/sqm) have been excluded."
+        )
