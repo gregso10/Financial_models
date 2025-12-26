@@ -1,4 +1,4 @@
-data/
+raw_data/
 dvf_processed.db
 real_estate/lib/
 notebooks/
