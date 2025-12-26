@@ -5,13 +5,19 @@ build-backend = "setuptools.build_meta"
 [project]
 name = "immo-core"
 version = "0.1.0"
+description = "French real estate investment analysis"
+requires-python = ">=3.10"
 dependencies = [
     "pandas>=2.0",
-    "numpy",
-    "numpy-financial",
-    "openpyxl",
+    "numpy>=1.24",
+    "numpy-financial>=1.0",
+    "openpyxl>=3.1",
 ]
 
+[project.optional-dependencies]
+api = ["fastapi>=0.100", "uvicorn>=0.20"]
+dev = ["pytest>=7.0"]
+
 [tool.setuptools.packages.find]
-where = ["."]
-include = ["scripts*"]
+where = ["packages"]
+include = ["immo_core*"]

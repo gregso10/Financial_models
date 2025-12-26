@@ -4,8 +4,8 @@ import pandas as pd
 import numpy as np
 import numpy_financial as npf
 from typing import Dict, List, Tuple, Optional
-from ._1_model_params import ModelParameters
-from ._11_taxes import Taxes
+from ..models.params import ModelParameters
+from ..fiscal.taxes import Taxes
 
 class InvestmentMetrics:
     """
@@ -235,7 +235,7 @@ class InvestmentMetrics:
             DataFrame with IRR sensitivity (rows = property growth, cols = financing costs)
         """
         try:
-            from ._0_financial_model import FinancialModel
+            from ..models.financial import FinancialModel
             
             base_financing_costs = self.params.loan_interest_rate
             base_property_growth = self.params.property_value_growth_rate
@@ -323,7 +323,7 @@ class InvestmentMetrics:
         """
         try:
             
-            from ._0_financial_model import FinancialModel
+            from ..models.financial import FinancialModel
             
             base_financing_costs = self.params.loan_interest_rate
             base_property_growth = self.params.property_value_growth_rate

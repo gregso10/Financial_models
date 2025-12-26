@@ -1,5 +1,3 @@
-# In file: scripts/_1_model_params.py
-
 from dataclasses import dataclass, field
 from typing import Dict, Optional, List # Import Dict and Optional for type hinting
 

@@ -4,10 +4,9 @@ from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).parent.parent.parent.parent))
 
-from scripts._1_model_params import ModelParameters
-from scripts._0_financial_model import FinancialModel
-from scripts._15_city_defaults import get_location_defaults, FIXED_DEFAULTS
-from scripts._18_fiscal_advisor import FiscalAdvisor, LeaseType, get_regime_recommendation_text
+from immo_core import ModelParameters, FinancialModel
+from immo_core.data import get_location_defaults, FIXED_DEFAULTS
+from immo_core.fiscal import FiscalAdvisor, LeaseType 
 
 from ..schemas import (
     SimpleSimulationRequest, SimulationResponse, SimulationMetrics,

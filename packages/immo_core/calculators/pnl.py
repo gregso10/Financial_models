@@ -6,8 +6,8 @@ import pandas as pd
 import numpy_financial as npf
 import numpy as np
 from typing import Dict, List
-from ._1_model_params import ModelParameters
-from ._11_taxes import Taxes # Import the new Tax class
+from ..models.params import ModelParameters
+from ..fiscal.taxes import Taxes 
 
 class PnL:
     """

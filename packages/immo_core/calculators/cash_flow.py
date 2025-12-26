@@ -3,7 +3,7 @@
 import pandas as pd
 import numpy as np # Might be needed for more complex calcs later
 from typing import Dict, List
-from ._1_model_params import ModelParameters
+from ..models.params import ModelParameters
 
 class CashFlow:
     """

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy as np
 import numpy_financial as npf
 from typing import Dict, List, Optional
-from ._1_model_params import ModelParameters
+from ..models.params import ModelParameters
 
 
 class LoanCalculator:

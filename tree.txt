@@ -26455,12 +26455,6 @@
 │       ├── package.json
 │       ├── package-lock.json
 │       ├── postcss.config.mjs
-│       ├── public
-│       │   ├── file.svg
-│       │   ├── globe.svg
-│       │   ├── next.svg
-│       │   ├── vercel.svg
-│       │   └── window.svg
 │       ├── README.md
 │       ├── src
 │       │   ├── app
@@ -26616,6 +26610,54 @@
 │   ├── testing3D_layer_paris.html
 │   ├── testing_layer.html
 │   └── testing with building shape.html
+├── packages
+│   ├── immo_core
+│   │   ├── calculators
+│   │   │   ├── balance_sheet.py
+│   │   │   ├── cash_flow.py
+│   │   │   ├── __init__.py
+│   │   │   ├── loan.py
+│   │   │   ├── metrics.py
+│   │   │   ├── pnl.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── balance_sheet.cpython-312.pyc
+│   │   │   │   ├── cash_flow.cpython-312.pyc
+│   │   │   │   ├── __init__.cpython-312.pyc
+│   │   │   │   ├── loan.cpython-312.pyc
+│   │   │   │   ├── metrics.cpython-312.pyc
+│   │   │   │   ├── pnl.cpython-312.pyc
+│   │   │   │   └── transaction.cpython-312.pyc
+│   │   │   └── transaction.py
+│   │   ├── data
+│   │   │   ├── city_defaults.py
+│   │   │   └── __init__.py
+│   │   ├── fiscal
+│   │   │   ├── advisor.py
+│   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── advisor.cpython-312.pyc
+│   │   │   │   ├── __init__.cpython-312.pyc
+│   │   │   │   └── taxes.cpython-312.pyc
+│   │   │   └── taxes.py
+│   │   ├── __init__.py
+│   │   ├── models
+│   │   │   ├── financial.py
+│   │   │   ├── __init__.py
+│   │   │   ├── params.py
+│   │   │   └── __pycache__
+│   │   │       ├── financial.cpython-312.pyc
+│   │   │       ├── __init__.cpython-312.pyc
+│   │   │       └── params.cpython-312.pyc
+│   │   ├── __pycache__
+│   │   │   └── __init__.cpython-312.pyc
+│   │   └── utils
+│   │       └── __init__.py
+│   └── immo_core.egg-info
+│       ├── dependency_links.txt
+│       ├── PKG-INFO
+│       ├── requires.txt
+│       ├── SOURCES.txt
+│       └── top_level.txt
 ├── paris_base_3d.html
 ├── pyproject.toml
 ├── real_estate
@@ -26668,4 +26710,4 @@
 │       └── __init__.cpython-312.pyc
 └── tree.txt
 
-2252 directories, 24417 files
+2263 directories, 24448 files

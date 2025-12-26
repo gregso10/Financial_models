@@ -1,6 +1,6 @@
 import numpy_financial as npf
 from typing import Dict
-from ._1_model_params import ModelParameters # Relative import
+from ..models.params import ModelParameters
 
 class TransactionCalculator:
     """
