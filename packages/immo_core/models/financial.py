@@ -2,13 +2,13 @@
 
 import pandas as pd
 from typing import Dict, Optional
-from ._1_model_params import ModelParameters
-from ._2_profit_and_loss import PnL
-from ._3_balance_sheet import BalanceSheet
-from ._4_cash_flow import CashFlow
-from ._5_transaction_calculator import TransactionCalculator
-from ._8_loan_calculator import LoanCalculator
-from ._9_investment_metrics import InvestmentMetrics
+from .params import ModelParameters
+from ..calculators.pnl import PnL
+from ..calculators.balance_sheet import BalanceSheet
+from ..calculators.cash_flow import CashFlow
+from ..calculators.transaction import TransactionCalculator
+from ..calculators.loan import LoanCalculator
+from ..calculators.metrics import InvestmentMetrics
 
 class FinancialModel:
     """

@@ -1,0 +1,14 @@
+Metadata-Version: 2.4
+Name: immo-core
+Version: 0.1.0
+Summary: French real estate investment analysis
+Requires-Python: >=3.10
+Requires-Dist: pandas>=2.0
+Requires-Dist: numpy>=1.24
+Requires-Dist: numpy-financial>=1.0
+Requires-Dist: openpyxl>=3.1
+Provides-Extra: api
+Requires-Dist: fastapi>=0.100; extra == "api"
+Requires-Dist: uvicorn>=0.20; extra == "api"
+Provides-Extra: dev
+Requires-Dist: pytest>=7.0; extra == "dev"

@@ -1,8 +1,6 @@
-# In file: scripts/_11_taxes.py
-
 from dataclasses import dataclass
 from typing import Dict
-from ._1_model_params import ModelParameters
+from ..models.params import ModelParameters
 
 class Taxes:
     """

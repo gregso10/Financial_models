@@ -2,7 +2,7 @@ from fastapi import APIRouter
 import sys
 sys.path.insert(0, '../../..')
 
-from scripts._15_city_defaults import get_selectable_locations, get_location_defaults
+from immo_core.data import get_selectable_locations, get_location_defaults
 
 from ..schemas import LocationDefaults
 

@@ -4,7 +4,7 @@ import pandas as pd
 import numpy_financial as npf
 import numpy as np # For loan balance calculation if needed
 from typing import Dict, List
-from ._1_model_params import ModelParameters
+from ..models.params import ModelParameters
 # No direct import of PnL needed, as we receive its results (DataFrame)
 
 class BalanceSheet:
