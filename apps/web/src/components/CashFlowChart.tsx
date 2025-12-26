@@ -42,7 +42,7 @@ export default function CashFlowChart({ data }: Props) {
             tickFormatter={(v) => `${(v/1000).toFixed(0)}k`}
           />
           <Tooltip
-            contentStyle={{ backgroundColor: '#1f2937', border: '1px solid #374151', borderRadius: '8px' }}
+            contentStyle={{ backgroundColor: '#f1f7ffff', border: '1px solid #374151', borderRadius: '8px' }}
             labelStyle={{ color: '#9ca3af' }}
             formatter={(value: number) => [formatValue(value), t('annual_cashflow')]}
           />
