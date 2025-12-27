@@ -1,5 +1,4 @@
 .
-├── app.py
 ├── apps
 │   ├── api
 │   │   ├── __init__.py
@@ -10,9 +9,11 @@
 │   │   │   └── schemas.cpython-312.pyc
 │   │   ├── routers
 │   │   │   ├── data.py
+│   │   │   ├── expert.py
 │   │   │   ├── __init__.py
 │   │   │   ├── __pycache__
 │   │   │   │   ├── data.cpython-312.pyc
+│   │   │   │   ├── expert.cpython-312.pyc
 │   │   │   │   ├── __init__.cpython-312.pyc
 │   │   │   │   └── simulation.cpython-312.pyc
 │   │   │   └── simulation.py
@@ -26469,10 +26470,13 @@
 │       │   │   ├── CashFlowChart.tsx
 │       │   │   ├── CumulativeCashFlowChart.tsx
 │       │   │   ├── ExitScenario.tsx
+│       │   │   ├── ExpertSimulatorForm.tsx
 │       │   │   ├── FiscalComparison.tsx
+│       │   │   ├── LMPStatus.tsx
 │       │   │   ├── MetricCard.tsx
 │       │   │   ├── ResultsDashboard.tsx
 │       │   │   ├── ScoreGauge.tsx
+│       │   │   ├── SensitivityChart.tsx
 │       │   │   └── SimulatorForm.tsx
 │       │   └── lib
 │       │       ├── api.ts
@@ -26669,4 +26673,4 @@
 ├── requirements.txt
 └── tree.txt
 
-2262 directories, 24408 files
+2262 directories, 24412 files
