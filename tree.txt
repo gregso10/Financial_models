@@ -26480,7 +26480,97 @@
 │       └── tsconfig.json
 ├── ban_data
 │   └── adresses-france.csv.gz
-├── data
+├── dvf_processed.db
+├── Features.docx
+├── immo_core.egg-info
+│   ├── dependency_links.txt
+│   ├── PKG-INFO
+│   ├── requires.txt
+│   ├── SOURCES.txt
+│   └── top_level.txt
+├── notebooks
+│   ├── cache
+│   │   ├── 1137903825a080443b5a64436f9956b29c3df3a2.json
+│   │   ├── 4df0b3a6575fad8619820d87993a5191584421db.json
+│   │   ├── 59f73c1853ac990fe0ca7cc5adb7028a18a6607f.json
+│   │   ├── 6798288b9ddc1ca6a54bebb7988663967f4fe5cc.json
+│   │   ├── 795a04e15c6d356bc4c6cdc0d179a0db9bf2fe38.json
+│   │   ├── 7cec29edba92e435d6783b390259863924de6ca5.json
+│   │   ├── 9871ff910cd57759d7ec0d92cde2ab8e7ed0a1ae.json
+│   │   ├── a44a221af8c118c78529e130be588658ea193f44.json
+│   │   ├── a748bab961a8cb3c2caa10b08715ff394bed1876.json
+│   │   ├── b1ee66ad1f14da2ada1025a05191e41de47c1715.json
+│   │   ├── ed3363a1a0254af48d64360a486a62c60aaaf166.json
+│   │   └── f7254a7ae8c02c084bae10abb6fc4ff2c770775e.json
+│   ├── carte_3d_immobilier.html
+│   ├── carte_paris_3d.html
+│   ├── data_loader.ipynb
+│   ├── exemples_de_cas_pour_llm.csv
+│   ├── geojson_layer.html
+│   ├── mapping.ipynb
+│   ├── notebook.ipynb
+│   ├── paris_3d_optimized.html
+│   ├── paris_kepler.html
+│   ├── règles_impots.txt
+│   ├── testing3D_layer2.html
+│   ├── testing3D_layer.html
+│   ├── testing3D_layer_paris.html
+│   ├── testing_layer.html
+│   └── testing with building shape.html
+├── packages
+│   ├── immo_core
+│   │   ├── calculators
+│   │   │   ├── balance_sheet.py
+│   │   │   ├── cash_flow.py
+│   │   │   ├── __init__.py
+│   │   │   ├── loan.py
+│   │   │   ├── metrics.py
+│   │   │   ├── pnl.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── balance_sheet.cpython-312.pyc
+│   │   │   │   ├── cash_flow.cpython-312.pyc
+│   │   │   │   ├── __init__.cpython-312.pyc
+│   │   │   │   ├── loan.cpython-312.pyc
+│   │   │   │   ├── metrics.cpython-312.pyc
+│   │   │   │   ├── pnl.cpython-312.pyc
+│   │   │   │   └── transaction.cpython-312.pyc
+│   │   │   └── transaction.py
+│   │   ├── data
+│   │   │   ├── city_defaults.py
+│   │   │   ├── __init__.py
+│   │   │   └── __pycache__
+│   │   │       ├── city_defaults.cpython-312.pyc
+│   │   │       └── __init__.cpython-312.pyc
+│   │   ├── fiscal
+│   │   │   ├── advisor.py
+│   │   │   ├── __init__.py
+│   │   │   ├── __pycache__
+│   │   │   │   ├── advisor.cpython-312.pyc
+│   │   │   │   ├── __init__.cpython-312.pyc
+│   │   │   │   └── taxes.cpython-312.pyc
+│   │   │   └── taxes.py
+│   │   ├── __init__.py
+│   │   ├── models
+│   │   │   ├── financial.py
+│   │   │   ├── __init__.py
+│   │   │   ├── params.py
+│   │   │   └── __pycache__
+│   │   │       ├── financial.cpython-312.pyc
+│   │   │       ├── __init__.cpython-312.pyc
+│   │   │       └── params.cpython-312.pyc
+│   │   ├── __pycache__
+│   │   │   └── __init__.cpython-312.pyc
+│   │   └── utils
+│   │       └── __init__.py
+│   └── immo_core.egg-info
+│       ├── dependency_links.txt
+│       ├── PKG-INFO
+│       ├── requires.txt
+│       ├── SOURCES.txt
+│       └── top_level.txt
+├── paris_base_3d.html
+├── pyproject.toml
+├── raw_data
 │   ├── 201904
 │   │   ├── valeursfoncieres-2014.txt.7z
 │   │   ├── valeursfoncieres-2015.txt.7z
@@ -26573,141 +26663,10 @@
 │   ├── notice-descriptive-du-fichier-dvf.pdf
 │   ├── ValeursFoncieres-2024.txt
 │   └── ValeursFoncieres-2024.txt:Zone.Identifier
-├── dvf_processed.db
-├── Features.docx
-├── immo_core.egg-info
-│   ├── dependency_links.txt
-│   ├── PKG-INFO
-│   ├── requires.txt
-│   ├── SOURCES.txt
-│   └── top_level.txt
-├── notebooks
-│   ├── cache
-│   │   ├── 1137903825a080443b5a64436f9956b29c3df3a2.json
-│   │   ├── 4df0b3a6575fad8619820d87993a5191584421db.json
-│   │   ├── 59f73c1853ac990fe0ca7cc5adb7028a18a6607f.json
-│   │   ├── 6798288b9ddc1ca6a54bebb7988663967f4fe5cc.json
-│   │   ├── 795a04e15c6d356bc4c6cdc0d179a0db9bf2fe38.json
-│   │   ├── 7cec29edba92e435d6783b390259863924de6ca5.json
-│   │   ├── 9871ff910cd57759d7ec0d92cde2ab8e7ed0a1ae.json
-│   │   ├── a44a221af8c118c78529e130be588658ea193f44.json
-│   │   ├── a748bab961a8cb3c2caa10b08715ff394bed1876.json
-│   │   ├── b1ee66ad1f14da2ada1025a05191e41de47c1715.json
-│   │   ├── ed3363a1a0254af48d64360a486a62c60aaaf166.json
-│   │   └── f7254a7ae8c02c084bae10abb6fc4ff2c770775e.json
-│   ├── carte_3d_immobilier.html
-│   ├── carte_paris_3d.html
-│   ├── data_loader.ipynb
-│   ├── exemples_de_cas_pour_llm.csv
-│   ├── geojson_layer.html
-│   ├── mapping.ipynb
-│   ├── notebook.ipynb
-│   ├── paris_3d_optimized.html
-│   ├── paris_kepler.html
-│   ├── règles_impots.txt
-│   ├── testing3D_layer2.html
-│   ├── testing3D_layer.html
-│   ├── testing3D_layer_paris.html
-│   ├── testing_layer.html
-│   └── testing with building shape.html
-├── packages
-│   ├── immo_core
-│   │   ├── calculators
-│   │   │   ├── balance_sheet.py
-│   │   │   ├── cash_flow.py
-│   │   │   ├── __init__.py
-│   │   │   ├── loan.py
-│   │   │   ├── metrics.py
-│   │   │   ├── pnl.py
-│   │   │   ├── __pycache__
-│   │   │   │   ├── balance_sheet.cpython-312.pyc
-│   │   │   │   ├── cash_flow.cpython-312.pyc
-│   │   │   │   ├── __init__.cpython-312.pyc
-│   │   │   │   ├── loan.cpython-312.pyc
-│   │   │   │   ├── metrics.cpython-312.pyc
-│   │   │   │   ├── pnl.cpython-312.pyc
-│   │   │   │   └── transaction.cpython-312.pyc
-│   │   │   └── transaction.py
-│   │   ├── data
-│   │   │   ├── city_defaults.py
-│   │   │   └── __init__.py
-│   │   ├── fiscal
-│   │   │   ├── advisor.py
-│   │   │   ├── __init__.py
-│   │   │   ├── __pycache__
-│   │   │   │   ├── advisor.cpython-312.pyc
-│   │   │   │   ├── __init__.cpython-312.pyc
-│   │   │   │   └── taxes.cpython-312.pyc
-│   │   │   └── taxes.py
-│   │   ├── __init__.py
-│   │   ├── models
-│   │   │   ├── financial.py
-│   │   │   ├── __init__.py
-│   │   │   ├── params.py
-│   │   │   └── __pycache__
-│   │   │       ├── financial.cpython-312.pyc
-│   │   │       ├── __init__.cpython-312.pyc
-│   │   │       └── params.cpython-312.pyc
-│   │   ├── __pycache__
-│   │   │   └── __init__.cpython-312.pyc
-│   │   └── utils
-│   │       └── __init__.py
-│   └── immo_core.egg-info
-│       ├── dependency_links.txt
-│       ├── PKG-INFO
-│       ├── requires.txt
-│       ├── SOURCES.txt
-│       └── top_level.txt
-├── paris_base_3d.html
-├── pyproject.toml
 ├── real_estate
 │   └── include
 │       └── python3.12
 ├── requirements.txt
-├── scripts
-│   ├── _0_financial_model.py
-│   ├── _10_dvf_analyzer.py
-│   ├── _11_taxes.py
-│   ├── _12_excel_exporter.py
-│   ├── _13_excel_exporter_full.py
-│   ├── _14_translations.py
-│   ├── _15_city_defaults.py
-│   ├── _16_simple_viewer.py
-│   ├── _17_dvf_comparison.py
-│   ├── _18_fiscal_advisor.py
-│   ├── _19_address_widget.py
-│   ├── _1_model_params.py
-│   ├── _2_profit_and_loss.py
-│   ├── _3_balance_sheet.py
-│   ├── _4_cash_flow.py
-│   ├── _5_transaction_calculator.py
-│   ├── _6_viewer.py
-│   ├── _7_data_visualizer.py
-│   ├── _8_loan_calculator.py
-│   ├── _9_investment_metrics.py
-│   ├── __init__.py
-│   └── __pycache__
-│       ├── _0_financial_model.cpython-312.pyc
-│       ├── _10_dvf_analyzer_local.cpython-312.pyc
-│       ├── _11_taxes.cpython-312.pyc
-│       ├── _12_excel_exporter.cpython-312.pyc
-│       ├── _13_excel_exporter_full.cpython-312.pyc
-│       ├── _14_translations.cpython-312.pyc
-│       ├── _15_city_defaults.cpython-312.pyc
-│       ├── _16_simple_viewer.cpython-312.pyc
-│       ├── _17_dvf_comparison.cpython-312.pyc
-│       ├── _18_fiscal_advisor.cpython-312.pyc
-│       ├── _19_address_widget.cpython-312.pyc
-│       ├── _1_model_params.cpython-312.pyc
-│       ├── _2_profit_and_loss.cpython-312.pyc
-│       ├── _3_balance_sheet.cpython-312.pyc
-│       ├── _4_cash_flow.cpython-312.pyc
-│       ├── _5_transaction_calculator.cpython-312.pyc
-│       ├── _6_viewer.cpython-312.pyc
-│       ├── _7_data_visualizer.cpython-312.pyc
-│       ├── _8_loan_calculator.cpython-312.pyc
-│       ├── _9_investment_metrics.cpython-312.pyc
-│       └── __init__.cpython-312.pyc
 └── tree.txt
 
-2263 directories, 24448 files
+2262 directories, 24408 files
