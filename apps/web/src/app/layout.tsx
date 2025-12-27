@@ -1,22 +1,36 @@
-import type { Metadata } from 'next';
-import { Inter } from 'next/font/google';
-import './globals.css';
-import { I18nProvider } from '@/lib/i18n';
+import type { Metadata } from "next";
+import { Geist, Geist_Mono } from "next/font/google";
+import "./globals.css";
+import { LanguageProvider } from "@/lib/i18n";
 
-const inter = Inter({ subsets: ['latin'] });
+const geistSans = Geist({
+  variable: "--font-geist-sans",
+  subsets: ["latin"],
+});
+
+const geistMono = Geist_Mono({
+  variable: "--font-geist-mono",
+  subsets: ["latin"],
+});
 
 export const metadata: Metadata = {
-  title: 'Immo Invest - Simulateur Investissement Locatif',
-  description: 'Analysez la rentabilité de vos investissements immobiliers',
+  title: "Immo Invest - Simulateur Investissement Locatif",
+  description: "Analysez la rentabilité de vos investissements immobiliers",
 };
 
-export default function RootLayout({ children }: { children: React.ReactNode }) {
+export default function RootLayout({
+  children,
+}: Readonly<{
+  children: React.ReactNode;
+}>) {
   return (
     <html lang="fr">
-      <body className={inter.className}>
-        <I18nProvider>
+      <body
+        className={`${geistSans.variable} ${geistMono.variable} antialiased`}
+      >
+        <LanguageProvider>
           {children}
-        </I18nProvider>
+        </LanguageProvider>
       </body>
     </html>
   );

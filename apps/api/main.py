@@ -4,7 +4,7 @@ Immo Invest API - French Real Estate Investment Analysis
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
-from .routers import simulation, data
+from .routers import simulation, data, expert
 
 app = FastAPI(
     title="Immo Invest API",
@@ -24,7 +24,7 @@ app.add_middleware(
 # Routers
 app.include_router(simulation.router, prefix="/api/v1")
 app.include_router(data.router, prefix="/api/v1")
-
+app.include_router(expert.router, prefix="/api/v1") 
 
 @app.get("/health")
 async def health():
